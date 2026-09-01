@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gr-playground"
+version = "0.1.0"
+description = "A GNU Radio Playground for LLM Agents to Build and Verify Signal Analysis & DSP Skills"
+readme = "README.md"
+authors = [
+    { name = "GNU Radio LLM Agent Team" }
+]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib"
+]
+
+[project.scripts]
+gr-generate-signal = ".agents.skills.generate-test-signal.scripts.generate_test_signal:main"
+gr-analyze-signal = ".agents.skills.signal-analysis.scripts.analyze_signal:main"
+gr-cleanup-signal = ".agents.skills.signal-cleanup.scripts.cleanup_signal:main"
+gr-classify-modulation = ".agents.skills.modulation-recognition.scripts.classify_modulation:main"
+gr-synchronize-signal = ".agents.skills.signal-synchronization.scripts.synchronize_signal:main"
+gr-demodulate-signal = ".agents.skills.signal-demodulation.scripts.demodulate_signal:main"
+gr-build-flowgraph = ".agents.skills.build-gnuradio-flowgraph.scripts.build_gnuradio_flowgraph:main"
