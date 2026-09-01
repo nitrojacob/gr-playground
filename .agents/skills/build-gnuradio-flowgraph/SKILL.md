@@ -5,7 +5,7 @@ description: Compose and generate executable standalone GNU Radio Python top_blo
 
 # Build GNU Radio Flowgraph Skill 🛠️
 
-Use this skill when you need to construct a complete, standalone GNU Radio Python flowgraph (`gr.top_block`) to process, clean, synchronize, and demodulate a new or custom signal.
+Use this skill when you need to construct a complete, standalone GNU Radio Python flowgraph (`gr.top_block`) or `.grc` file to process, clean, synchronize, and demodulate a new or custom signal.
 
 ## Instructions
 
@@ -23,3 +23,6 @@ Use this skill when you need to construct a complete, standalone GNU Radio Pytho
    ```bash
    PYTHONPATH=/usr/lib/python3/dist-packages python3 <output_script.py> <input_sigmf> <output_iq>
    ```
+
+4. **GRC Schema & RTL-SDR Hardware Reference**:
+   For detailed GRC 3.8/3.10 YAML schema rules, programmatic GRC validation, and RTL-SDR Linux hardware access setup, refer to [references/grc_and_rtlsdr_guide.md](file:///.agents/skills/build-gnuradio-flowgraph/references/grc_and_rtlsdr_guide.md).

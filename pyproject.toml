@@ -25,3 +25,7 @@ gr-classify-modulation = ".agents.skills.modulation-recognition.scripts.classify
 gr-synchronize-signal = ".agents.skills.signal-synchronization.scripts.synchronize_signal:main"
 gr-demodulate-signal = ".agents.skills.signal-demodulation.scripts.demodulate_signal:main"
 gr-build-flowgraph = ".agents.skills.build-gnuradio-flowgraph.scripts.build_gnuradio_flowgraph:main"
+
+[tool.pytest.ini_options]
+addopts = "-v --tb=short"
+testpaths = ["tests"]

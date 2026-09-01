@@ -16,7 +16,7 @@ from gr_playground.dsp.synchronization import synchronize_signal_flowgraph
 from gr_playground.dsp.demodulation import demodulate_signal_flowgraph
 from gr_playground.dsp.flowgraph_builder import FlowgraphBuilder
 
-def test_spectrum_analysis():
+def test_dsp_welch_psd_snr_and_peak_spectrum_analysis():
     t = np.linspace(0, 1.0, 32000, endpoint=False)
     sig = np.exp(1j * 2 * np.pi * 2000 * t) + 0.1 * (np.random.randn(32000) + 1j * np.random.randn(32000))
     res = analyze_spectrum(sig, sample_rate=32000)
@@ -24,19 +24,19 @@ def test_spectrum_analysis():
     assert res["snr_db"] > 10.0
     assert len(res["peaks"]) > 0
 
-def test_cleanup_flowgraph():
+def test_dsp_signal_cleanup_dc_removal_and_iq_balancing():
     t = np.linspace(0, 0.5, 16000, endpoint=False)
     sig = np.exp(1j * 2 * np.pi * 1000 * t) + 0.2 + 0.2j  # Tone with DC offset
     cleaned = cleanup_signal_flowgraph(sig, sample_rate=32000, cutoff_hz=4000.0)
     assert len(cleaned) > 0
 
-def test_modulation_classification():
+def test_dsp_automatic_modulation_classification():
     t = np.linspace(0, 0.5, 16000, endpoint=False)
     sig = np.exp(1j * 2 * np.pi * 1000 * t)  # Tone FM
     preds, cumulants, const_stats = classify_modulation(sig)
     assert len(preds) > 0
 
-def test_flowgraph_builder():
+def test_dsp_top_block_python_script_generation():
     code = FlowgraphBuilder.generate_top_block_script("/tmp/in.sigmf-data", "/tmp/out.sigmf-data", ["dc_block", "agc"])
     assert "class GeneratedTopBlock(gr.top_block):" in code
     assert "filter.dc_blocker_cc" in code
