@@ -7,10 +7,10 @@ import os
 
 class FlowgraphBuilder:
     @staticmethod
-    def generate_top_block_script(input_sigmf_path, output_sigmf_path, operations, sample_rate=32000):
+    def generate_top_block_script(input_sigmf_path, output_sigmf_path, operations, sample_rate=32000, center_freq_offset=0.0):
         """
         Generates a standalone Python script instantiating a GNU Radio gr.top_block
-        that executes the requested DSP operations (DC block, filtering, Costas loop, etc.).
+        that executes the requested DSP operations (DC block, filtering, Costas loop, DDC channelizer, etc.).
         """
         script_code = f"""#!/usr/bin/env python3
 # Automatically generated GNU Radio Top Block script by gr-playground Agent
@@ -30,6 +30,14 @@ class GeneratedTopBlock(gr.top_block):
 
 """
         # Append operations
+        if "freq_xlating_filter" in operations:
+            script_code += f"""        # Frequency Translating FIR Filter (Digital Downconverter)
+        cutoff = {sample_rate} * 0.1
+        taps = filter.firdes.low_pass(1.0, {sample_rate}, cutoff, cutoff * 0.2)
+        self.xlating = filter.freq_xlating_fir_filter_ccc(1, taps, {center_freq_offset}, {sample_rate})
+        self.connect(last_block, self.xlating)
+        last_block = self.xlating
+"""
         if "dc_block" in operations:
             script_code += """        # DC Blocker Block
         self.dc_blocker = filter.dc_blocker_cc(32, True)
@@ -64,7 +72,7 @@ class GeneratedTopBlock(gr.top_block):
         last_block = self.sym_sync
 """
 
-        script_code += """
+        script_code += f"""
         # Sink: File Sink
         self.sink = blocks.file_sink(gr.sizeof_gr_complex, output_file, False)
         self.connect(last_block, self.sink)

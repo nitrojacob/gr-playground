@@ -7,6 +7,7 @@ from .modulation_id import classify_modulation
 from .synchronization import synchronize_signal_flowgraph
 from .demodulation import demodulate_signal_flowgraph
 from .flowgraph_builder import FlowgraphBuilder
+from .channelizer import scan_wideband_channels, extract_channel_flowgraph
 
 __all__ = [
     "analyze_spectrum",
@@ -14,5 +15,7 @@ __all__ = [
     "classify_modulation",
     "synchronize_signal_flowgraph",
     "demodulate_signal_flowgraph",
-    "FlowgraphBuilder"
+    "FlowgraphBuilder",
+    "scan_wideband_channels",
+    "extract_channel_flowgraph"
 ]
