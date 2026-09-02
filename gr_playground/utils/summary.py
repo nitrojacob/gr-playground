@@ -14,7 +14,7 @@ def format_spectrum_summary(num_samples, sample_rate, estimated_snr_db, occupied
         "",
         f"- **Sample Count**: {num_samples:,}",
         f"- **Sample Rate**: {sample_rate / 1e3:.2f} kHz",
-        f"- **Estimated SNR (M2M4)**: {estimated_snr_db:.2f} dB",
+        f"- **Estimated SNR**: {estimated_snr_db:.2f} dB",
         f"- **Occupied Bandwidth (99% Power)**: {occupied_bw_hz / 1e3:.2f} kHz",
         f"- **DC Offset Level**: {dc_offset_db:.2f} dB",
         "",

@@ -3,45 +3,53 @@ name: rtlsdr-hardware-capture
 description: Capture live RF signals from RTL-SDR hardware dongles with tunable center frequency, sample rate, duration, tuner/RF/IF gain, offset frequency, and DDC channelization, exporting directly to SigMF (.sigmf-meta and .sigmf-data).
 ---
 
-# RTL-SDR Hardware Capture Skill 📡
+# RTL-SDR Hardware Capture & Interactive Channel Selection Skill 📡
 
-Use this skill when the user requests to capture live RF spectrum signals using an RTL-SDR hardware USB dongle.
+Use this skill when the user requests to capture live RF spectrum signals using an RTL-SDR hardware USB dongle, analyze potential channels in wideband spectrum, select a target channel interactively, and perform DDC channelization.
 
 ## Triggering Context
 Activate this skill whenever the user asks to:
 - "capture from RTL-SDR"
-- "capture around <frequency> for <duration>"
-- "record live RF signal at <freq>"
-- "capture <frequency> MHz with gain <gain>"
+- "capture pure wideband signal at <freq>"
+- "list potential channels from wideband capture"
+- "localize channel offset and do DDC"
 
-## Instructions
+---
 
-1. **Execute Headless RTL-SDR Capture Script**:
-   Run the generic capture tool with requested tuning parameters:
-   ```bash
-   PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/rtlsdr-hardware-capture/scripts/capture_rtlsdr.py \
-     --freq <center_freq_hz_or_mhz> \
-     --duration <seconds> \
-     --gain <tuner_rf_gain_db> \
-     --if_gain <if_gain_db> \
-     --gain_mode <manual|auto> \
-     --samp_rate <wideband_sample_rate> \
-     --offset <ddc_offset_hz> \
-     --output <output_sigmf_path>
-   ```
+## Interactive 4-Step Wideband Workflow
 
-2. **Tunable Parameters**:
-   - `--freq` / `--center_freq`: Center RF frequency in Hz, MHz, or GHz (e.g. `92.0e6`, `92M`, `100.2MHz`, `433.92M`, `1420M`).
-   - `--duration` / `--time`: Capture duration in seconds (default: `30`).
-   - `--gain` / `--tuner_gain`: Tuner / RF gain in dB (default: `20.0`).
-   - `--if_gain`: Intermediate Frequency (IF) gain in dB (default: `20.0`).
-   - `--gain_mode`: Gain mode (`manual` or `auto`/`agc`).
-   - `--samp_rate`: Wideband SDR hardware sampling rate in Hz (default: `2400000` / 2.4 MSps).
-   - `--offset`: DDC frequency offset in Hz (default: `200000` / 200 kHz).
-   - `--cutoff`: DDC lowpass filter cutoff frequency in Hz (default: `60000` / 60 kHz).
-   - `--decimation`: DDC decimation factor (default: `10`).
-   - `--output`: Target path for `.sigmf-data` file (default: `/tmp/rtlsdr_capture.sigmf-data`).
+### Step 1: Pure Wideband Capture (Raw Hardware Acquisition)
+Capture the full $2.4\text{ MSps}$ wideband RF spectrum without DDC filtering during hardware acquisition:
+```bash
+PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/rtlsdr-hardware-capture/scripts/capture_rtlsdr.py \
+  --freq <center_freq_mhz> \
+  --duration <seconds> \
+  --gain <tuner_rf_gain_db> \
+  --if_gain <if_gain_db> \
+  --wideband \
+  --output /tmp/wideband_raw_capture.sigmf-data
+```
 
-3. **Downstream DSP Workflow**:
-   The capture tool generates paired SigMF files (`.sigmf-data` + `.sigmf-meta`). Continue the analysis pipeline:
-   `rtlsdr-hardware-capture` $\rightarrow$ `signal-analysis` $\rightarrow$ `signal-cleanup` $\rightarrow$ `modulation-recognition` $\rightarrow$ `signal-demodulation`.
+### Step 2: Spectral Power-Based Scan & Potential Channels Listing
+Scan the wideband spectrum capture using PSD spectral power analysis to discover and list all potential candidate signal channels:
+```bash
+PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/rtlsdr-hardware-capture/scripts/localize_and_extract.py \
+  --input /tmp/wideband_raw_capture.sigmf-data \
+  --scan_only
+```
+
+### Step 3: User Channel Selection
+Present the table of potential channels (showing Rank, Frequency Offset, Absolute RF Frequency, Peak Power, and Bandwidth) to the user and ask the user to select which candidate channel they wish to localize and process.
+
+### Step 4: Targeted DDC Extraction & Full DSP Pipeline Execution
+Based on the user's selection, run DDC channelization on the chosen channel index (`--channel_index N`) or explicit offset (`--manual_offset OFFSET_HZ`):
+```bash
+PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/rtlsdr-hardware-capture/scripts/localize_and_extract.py \
+  --input /tmp/wideband_raw_capture.sigmf-data \
+  --channel_index <user_selected_rank> \
+  --decimation 10 \
+  --output /tmp/extracted_channel_localized.sigmf-data
+```
+
+Followed by downstream processing:
+`signal-analysis` $\rightarrow$ `signal-cleanup` $\rightarrow$ `modulation-recognition` $\rightarrow$ `signal-demodulation`.

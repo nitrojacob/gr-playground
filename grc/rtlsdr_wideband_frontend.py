@@ -5,19 +5,17 @@
 # SPDX-License-Identifier: GPL-3.0
 #
 # GNU Radio Python Flow Graph
-# Title: RTL-SDR Wideband Capture & Channelizer Frontend
+# Title: Pure Wideband Live RTL-SDR Capture Frontend with Push Button Recording Control
 # Author: gr-playground agent
-# Description: Live RTL-SDR RF capture and wideband file channelizer exporting to SigMF
+# Description: Live RTL-SDR RF pure wideband raw capture with interactive GUI frequency tuning and Push Button Start/Stop capture controls
 # GNU Radio version: 3.10.9.2
 
 from PyQt5 import Qt
 from gnuradio import qtgui
 from PyQt5 import QtCore
-from gnuradio import analog
 from gnuradio import blocks
-from gnuradio import filter
-from gnuradio.filter import firdes
 from gnuradio import gr
+from gnuradio.filter import firdes
 from gnuradio.fft import window
 import sys
 import signal
@@ -25,7 +23,8 @@ from PyQt5 import Qt
 from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
-from gnuradio import soapy
+import osmosdr
+import time
 import sip
 
 
@@ -33,9 +32,9 @@ import sip
 class rtlsdr_wideband_frontend(gr.top_block, Qt.QWidget):
 
     def __init__(self):
-        gr.top_block.__init__(self, "RTL-SDR Wideband Capture & Channelizer Frontend", catch_exceptions=True)
+        gr.top_block.__init__(self, "Pure Wideband Live RTL-SDR Capture Frontend with Push Button Recording Control", catch_exceptions=True)
         Qt.QWidget.__init__(self)
-        self.setWindowTitle("RTL-SDR Wideband Capture & Channelizer Frontend")
+        self.setWindowTitle("Pure Wideband Live RTL-SDR Capture Frontend with Push Button Recording Control")
         qtgui.util.check_set_qss()
         try:
             self.setWindowIcon(Qt.QIcon.fromTheme('gnuradio-grc'))
@@ -66,59 +65,47 @@ class rtlsdr_wideband_frontend(gr.top_block, Qt.QWidget):
         # Variables
         ##################################################
         self.samp_rate = samp_rate = 2400000
-        self.channel_cutoff = channel_cutoff = 60000.0
-        self.lpf_taps = lpf_taps = firdes.low_pass(1.0, samp_rate, channel_cutoff,channel_cutoff * 0.2, window.WIN_HAMMING, 6.76)
-        self.channel_freq_offset = channel_freq_offset = 200000.0
+        self.rf_gain = rf_gain = 49.6
+        self.center_freq = center_freq = 100000000.0
+        self.capture_enable = capture_enable = 0
 
         ##################################################
         # Blocks
         ##################################################
 
-        self._channel_freq_offset_range = qtgui.Range(-1000000.0, 1000000.0, 1000.0, 200000.0, 200)
-        self._channel_freq_offset_win = qtgui.RangeWidget(self._channel_freq_offset_range, self.set_channel_freq_offset, "Channel Offset (Hz)", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_layout.addWidget(self._channel_freq_offset_win)
-        self.agc = analog.agc2_cc((1e-3), (1e-2), 1.0, 1.0, 65536)
-        self.sigmf_file_sink = blocks.file_sink(gr.sizeof_gr_complex*1, '/tmp/extracted_channel.sigmf-data', False)
-        self.sigmf_file_sink.set_unbuffered(False)
-        self.rtlsdr_source = None
-        dev = 'driver=rtlsdr'
-        stream_args = 'bufflen=16384'
-        tune_args = ['']
-        settings = ['']
-
-        def _set_rtlsdr_source_gain_mode(channel, agc):
-            self.rtlsdr_source.set_gain_mode(channel, agc)
-            if not agc:
-                  self.rtlsdr_source.set_gain(channel, self._rtlsdr_source_gain_value)
-        self.set_rtlsdr_source_gain_mode = _set_rtlsdr_source_gain_mode
-
-        def _set_rtlsdr_source_gain(channel, name, gain):
-            self._rtlsdr_source_gain_value = gain
-            if not self.rtlsdr_source.get_gain_mode(channel):
-                self.rtlsdr_source.set_gain(channel, gain)
-        self.set_rtlsdr_source_gain = _set_rtlsdr_source_gain
-
-        def _set_rtlsdr_source_bias(bias):
-            if 'biastee' in self._rtlsdr_source_setting_keys:
-                self.rtlsdr_source.write_setting('biastee', bias)
-        self.set_rtlsdr_source_bias = _set_rtlsdr_source_bias
-
-        self.rtlsdr_source = soapy.source(dev, "fc32", 1, '',
-                                  stream_args, tune_args, settings)
-
-        self._rtlsdr_source_setting_keys = [a.key for a in self.rtlsdr_source.get_setting_info()]
-
-        self.rtlsdr_source.set_sample_rate(0, samp_rate)
-        self.rtlsdr_source.set_frequency(0, 100.0e6)
-        self.rtlsdr_source.set_frequency_correction(0, 0)
-        self.set_rtlsdr_source_bias(bool(False))
-        self._rtlsdr_source_gain_value = 20
-        self.set_rtlsdr_source_gain_mode(0, bool(False))
-        self.set_rtlsdr_source_gain(0, 'TUNER', 20)
+        self._rf_gain_range = qtgui.Range(0.0, 49.6, 1.0, 49.6, 200)
+        self._rf_gain_win = qtgui.RangeWidget(self._rf_gain_range, self.set_rf_gain, "RF Tuner Gain (dB)", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_layout.addWidget(self._rf_gain_win)
+        self._center_freq_range = qtgui.Range(88000000.0, 108000000.0, 100000.0, 100000000.0, 200)
+        self._center_freq_win = qtgui.RangeWidget(self._center_freq_range, self.set_center_freq, "Center Frequency (Hz)", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_layout.addWidget(self._center_freq_win)
+        _capture_enable_push_button = Qt.QPushButton('Start / Stop Capture')
+        _capture_enable_push_button = Qt.QPushButton('Start / Stop Capture')
+        self._capture_enable_choices = {'Pressed': 1, 'Released': 0}
+        _capture_enable_push_button.pressed.connect(lambda: self.set_capture_enable(self._capture_enable_choices['Pressed']))
+        _capture_enable_push_button.released.connect(lambda: self.set_capture_enable(self._capture_enable_choices['Released']))
+        self.top_layout.addWidget(_capture_enable_push_button)
+        self.wideband_file_sink = blocks.file_sink(gr.sizeof_gr_complex*1, '/tmp/wideband_raw_capture.sigmf-data', False)
+        self.wideband_file_sink.set_unbuffered(False)
+        self.rtlsdr_source = osmosdr.source(
+            args="numchan=" + str(1) + " " + 'rtl=0'
+        )
+        self.rtlsdr_source.set_time_unknown_pps(osmosdr.time_spec_t())
+        self.rtlsdr_source.set_sample_rate(samp_rate)
+        self.rtlsdr_source.set_center_freq(center_freq, 0)
+        self.rtlsdr_source.set_freq_corr(0, 0)
+        self.rtlsdr_source.set_dc_offset_mode(0, 0)
+        self.rtlsdr_source.set_iq_balance_mode(0, 0)
+        self.rtlsdr_source.set_gain_mode(False, 0)
+        self.rtlsdr_source.set_gain(rf_gain, 0)
+        self.rtlsdr_source.set_if_gain(20, 0)
+        self.rtlsdr_source.set_bb_gain(20, 0)
+        self.rtlsdr_source.set_antenna('', 0)
+        self.rtlsdr_source.set_bandwidth(0, 0)
         self.qtgui_freq_sink = qtgui.freq_sink_c(
             2048, #size
             window.WIN_BLACKMAN_hARRIS, #wintype
-            100.0e6, #fc
+            center_freq, #fc
             samp_rate, #bw
             "Wideband Spectrum (RTL-SDR)", #name
             1,
@@ -157,18 +144,15 @@ class rtlsdr_wideband_frontend(gr.top_block, Qt.QWidget):
 
         self._qtgui_freq_sink_win = sip.wrapinstance(self.qtgui_freq_sink.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_freq_sink_win)
-        self.freq_xlating_filter = filter.freq_xlating_fir_filter_ccc(10, lpf_taps, channel_freq_offset, samp_rate)
-        self._channel_cutoff_range = qtgui.Range(5000.0, 250000.0, 2500.0, 60000.0, 200)
-        self._channel_cutoff_win = qtgui.RangeWidget(self._channel_cutoff_range, self.set_channel_cutoff, "Channel Cutoff (Hz)", "counter_slider", float, QtCore.Qt.Horizontal)
-        self.top_layout.addWidget(self._channel_cutoff_win)
+        self.blocks_copy_0 = blocks.copy(gr.sizeof_gr_complex*1)
+        self.blocks_copy_0.set_enabled(bool(capture_enable))
 
 
         ##################################################
         # Connections
         ##################################################
-        self.connect((self.agc, 0), (self.sigmf_file_sink, 0))
-        self.connect((self.freq_xlating_filter, 0), (self.agc, 0))
-        self.connect((self.rtlsdr_source, 0), (self.freq_xlating_filter, 0))
+        self.connect((self.blocks_copy_0, 0), (self.wideband_file_sink, 0))
+        self.connect((self.rtlsdr_source, 0), (self.blocks_copy_0, 0))
         self.connect((self.rtlsdr_source, 0), (self.qtgui_freq_sink, 0))
 
 
@@ -185,30 +169,30 @@ class rtlsdr_wideband_frontend(gr.top_block, Qt.QWidget):
 
     def set_samp_rate(self, samp_rate):
         self.samp_rate = samp_rate
-        self.set_lpf_taps(firdes.low_pass(1.0, self.samp_rate, self.channel_cutoff, self.channel_cutoff * 0.2, window.WIN_HAMMING, 6.76))
-        self.rtlsdr_source.set_sample_rate(0, self.samp_rate)
-        self.qtgui_freq_sink.set_frequency_range(100.0e6, self.samp_rate)
+        self.rtlsdr_source.set_sample_rate(self.samp_rate)
+        self.qtgui_freq_sink.set_frequency_range(self.center_freq, self.samp_rate)
 
-    def get_channel_cutoff(self):
-        return self.channel_cutoff
+    def get_rf_gain(self):
+        return self.rf_gain
 
-    def set_channel_cutoff(self, channel_cutoff):
-        self.channel_cutoff = channel_cutoff
-        self.set_lpf_taps(firdes.low_pass(1.0, self.samp_rate, self.channel_cutoff, self.channel_cutoff * 0.2, window.WIN_HAMMING, 6.76))
+    def set_rf_gain(self, rf_gain):
+        self.rf_gain = rf_gain
+        self.rtlsdr_source.set_gain(self.rf_gain, 0)
 
-    def get_lpf_taps(self):
-        return self.lpf_taps
+    def get_center_freq(self):
+        return self.center_freq
 
-    def set_lpf_taps(self, lpf_taps):
-        self.lpf_taps = lpf_taps
-        self.freq_xlating_filter.set_taps(self.lpf_taps)
+    def set_center_freq(self, center_freq):
+        self.center_freq = center_freq
+        self.rtlsdr_source.set_center_freq(self.center_freq, 0)
+        self.qtgui_freq_sink.set_frequency_range(self.center_freq, self.samp_rate)
 
-    def get_channel_freq_offset(self):
-        return self.channel_freq_offset
+    def get_capture_enable(self):
+        return self.capture_enable
 
-    def set_channel_freq_offset(self, channel_freq_offset):
-        self.channel_freq_offset = channel_freq_offset
-        self.freq_xlating_filter.set_center_freq(self.channel_freq_offset)
+    def set_capture_enable(self, capture_enable):
+        self.capture_enable = capture_enable
+        self.blocks_copy_0.set_enabled(bool(self.capture_enable))
 
 
 

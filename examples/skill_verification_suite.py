@@ -83,8 +83,8 @@ def run_verification_benchmark():
             else:
                 cfo_corrected = cleaned
 
-            # 4. Run Step 3: Modulation Recognition
-            preds, cumulants, const_stats = classify_modulation(cfo_corrected)
+            # 4. Run Step 3: Modulation Recognition (CFO-robust cumulants)
+            preds, cumulants, const_stats = classify_modulation(raw_samples)
             pred_mod = preds[0][0]
 
             # 5. Run Step 4: Synchronization

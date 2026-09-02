@@ -31,6 +31,25 @@ def estimate_snr_m2m4(samples):
     snr_lin = s_pow / n_pow
     return 10.0 * np.log10(max(snr_lin, 1e-4))
 
+def estimate_snr_psd(freqs, psd):
+    """
+    Estimate SNR using PSD peak power relative to median noise floor.
+    Provides robust SNR estimation for analog FM, constant-envelope, and noisy signals.
+    """
+    if len(psd) < 4:
+        return 0.0
+
+    psd_sorted = np.sort(psd)
+    noise_floor = np.median(psd_sorted[:len(psd_sorted)//2])
+    peak_power = np.max(psd)
+
+    if noise_floor <= 0 or peak_power <= 0:
+        return 0.0
+
+    snr_lin = peak_power / (noise_floor + 1e-12)
+    snr_db = 10.0 * np.log10(max(snr_lin, 1.0))
+    return float(snr_db)
+
 def estimate_occupied_bandwidth(freqs, psd, power_fraction=0.99):
     """
     Calculate the occupied bandwidth containing power_fraction (e.g. 99%) of total signal power.
@@ -93,7 +112,10 @@ def analyze_spectrum(samples, sample_rate=32000, nperseg=1024):
     psd = np.fft.fftshift(psd)
     
     # 2. SNR & Bandwidth
-    snr_db = estimate_snr_m2m4(samples)
+    snr_m2m4 = estimate_snr_m2m4(samples)
+    snr_psd = estimate_snr_psd(freqs, psd)
+    snr_db = snr_psd if snr_m2m4 <= 1.05 else max(snr_m2m4, snr_psd)
+
     occupied_bw = estimate_occupied_bandwidth(freqs, psd, power_fraction=0.99)
     
     # 3. DC Offset Level (at center bin 0 Hz)
@@ -112,6 +134,8 @@ def analyze_spectrum(samples, sample_rate=32000, nperseg=1024):
         "num_samples": num_samples,
         "sample_rate": sample_rate,
         "snr_db": snr_db,
+        "snr_psd_db": snr_psd,
+        "snr_m2m4_db": snr_m2m4,
         "occupied_bw_hz": occupied_bw,
         "dc_offset_db": dc_offset_db,
         "estimated_cfo_hz": estimated_cfo_hz,

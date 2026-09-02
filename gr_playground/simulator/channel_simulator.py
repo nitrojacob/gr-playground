@@ -67,7 +67,28 @@ class ChannelSimulatorFlowgraph(gr.top_block):
             is_complex_src = True
 
         # 2. Instantiate Modulator Block
-        if self.mod_type in ["BPSK", "QPSK", "8PSK", "16QAM", "64QAM", "256QAM"]:
+        if self.mod_type in ["ASK", "2ASK", "OOK"]:
+            if not is_complex_src:
+                if self.source_type == "prbs":
+                    b_in = self.src_block
+                else:
+                    f2b = blocks.float_to_uchar()
+                    self.connect(self.src_block, f2b)
+                    b_in = f2b
+            else:
+                c2m = blocks.complex_to_mag()
+                f2b = blocks.float_to_uchar()
+                self.connect(self.src_block, c2m, f2b)
+                b_in = f2b
+
+            b_mask = blocks.and_const_bb(1)
+            b2f = blocks.uchar_to_float()
+            rep = blocks.repeat(gr.sizeof_float, 4)
+            f2c = blocks.float_to_complex()
+            self.connect(b_in, b_mask, b2f, rep, f2c)
+            tx_out = f2c
+
+        elif self.mod_type in ["BPSK", "QPSK", "8PSK", "16QAM", "64QAM", "256QAM"]:
             if not is_complex_src:
                 # Convert float/byte source to byte/float for constellation modulator
                 if self.source_type == "prbs":

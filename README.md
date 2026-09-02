@@ -1,8 +1,16 @@
 # gr-playground 📡🤖
 
-A GNU Radio simulation playground and DSP skill suite designed for AI LLM agents.
+`gr-playground` is a comprehensive GNU Radio simulation playground, DSP library, and benchmark testbed designed for SDR developers and AI LLM agents.
 
-`gr-playground` allows LLM agents to perform signal analysis, modulation recognition, channel impairment compensation, carrier/clock synchronization, and signal cleanup by **composing and executing native GNU Radio flowgraphs** (`gnuradio.analog`, `gnuradio.digital`, `gnuradio.channels`, `gnuradio.filter`, `gnuradio.blocks`).
+The playground consists of three core pillars:
+1. **The Signal & Channel Simulator** (`gr_playground.simulator`): Synthesizes impaired complex IQ signals with AWGN, CFO, SRO, DC offset, multipath fading, phase noise, and jammer interference.
+2. **The Modular DSP Libraries** (`gr_playground.dsp` & `gr_playground.utils`): Provides wideband spectrum scanning, Digital Downconversion (DDC), automatic modulation classification (AMC) via higher-order cumulants, signal cleanup, synchronization, and demodulation.
+3. **The Automated Testcases & Benchmark Suite** (`tests/` & `examples/`): Evaluates DSP algorithms and agent skills against realistic real-world receiver non-idealities across 22 automated test cases.
+
+## Documentation & Specifications 📚
+
+- **[Product Requirements Document (PRD)](file:///mnt/wksp/kaggle_5dag/experiments/gr-playground/specs/PRD.md)**: Product goals, functional/non-functional specifications, and pillar requirements.
+- **[Architecture & System Design](file:///mnt/wksp/kaggle_5dag/experiments/gr-playground/specs/ARCHITECTURE.md)**: Three-pillar system architecture diagrams, mathematical formulations, GRC schema rules, and test strategies.
 
 ---
 

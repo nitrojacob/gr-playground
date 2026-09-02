@@ -27,6 +27,10 @@ class GRModulators:
                     points.append(complex(i, q))
             points = np.array(points) / np.sqrt(42.0)
             return digital.constellation_calcdist(points.tolist(), [], 4, 1).base()
+        elif mod_upper in ["ASK", "2ASK", "OOK"]:
+            # Build 2-ASK / OOK constellation points [0.0, 1.0]
+            points = [complex(0.0, 0.0), complex(1.0, 0.0)]
+            return digital.constellation_calcdist(points, [], 2, 1).base()
         elif mod_upper == "256QAM":
             points = []
             for i in np.arange(-15, 16, 2):
