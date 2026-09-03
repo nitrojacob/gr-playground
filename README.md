@@ -1,13 +1,15 @@
-# gr-playground 📡🤖
+# gr-playground
 
-`gr-playground` is a comprehensive GNU Radio simulation playground, DSP library, and benchmark testbed designed for SDR developers and AI LLM agents.
+`gr-playground` is for AI LLM agents to learn and develop skills in signal processing. It includes a GNU Radio simulation playground, DSP library, and benchmark testbed. The thought behind this is simple: You give your agent a testcase with transimitter and channel impairment simulation, and a task to demodulate/decode and get back original signal; The agent, will be able to try various algos and come up with one that works. Have more testcases for the same schemes at harder and harder channel impariment models, so that once your coding agent passes all the testcases, it has built the agent skills necessary for demodulating the signal.
+
+Alternately the skills that come prepackaged with this repo in .agents/ can be used as is with your coding agent, and you can prompt it like "capture wideband signal from rtl-sdr centered at 433MHz", "Analyse the captured rf band" etc. Your coding agent will scan the wideband capture for potential information channels, list and ask you to select channel to extract, extract it and identify modulation and demodulates the signal for you. You can also prompt it to "build a flowgraph for the receiver" to create a gnuradio-companion flow graph for realtime and interactive analysis.
 
 The playground consists of three core pillars:
 1. **The Signal & Channel Simulator** (`gr_playground.simulator`): Synthesizes impaired complex IQ signals with AWGN, CFO, SRO, DC offset, multipath fading, phase noise, and jammer interference.
 2. **The Modular DSP Libraries** (`gr_playground.dsp` & `gr_playground.utils`): Provides wideband spectrum scanning, Digital Downconversion (DDC), automatic modulation classification (AMC) via higher-order cumulants, signal cleanup, synchronization, and demodulation.
 3. **The Automated Testcases & Benchmark Suite** (`tests/` & `examples/`): Evaluates DSP algorithms and agent skills against realistic real-world receiver non-idealities across 22 automated test cases.
 
-## Documentation & Specifications 📚
+## Documentation & Specifications
 
 - **[Product Requirements Document (PRD)](file:///mnt/wksp/kaggle_5dag/experiments/gr-playground/specs/PRD.md)**: Product goals, functional/non-functional specifications, and pillar requirements.
 - **[Architecture & System Design](file:///mnt/wksp/kaggle_5dag/experiments/gr-playground/specs/ARCHITECTURE.md)**: Three-pillar system architecture diagrams, mathematical formulations, GRC schema rules, and test strategies.
@@ -75,7 +77,7 @@ gr-playground/
 
 ---
 
-## How-To: Analyzing Arbitrary Bands from RTL-SDR & SDR Hardware 📻
+## How-To: Analyzing Arbitrary Bands from RTL-SDR & SDR Hardware
 
 This section details how to capture, scan, extract, and analyze arbitrary RF bands recorded from SDR hardware (e.g. RTL-SDR, HackRF, USRP, LimeSDR).
 
@@ -224,3 +226,8 @@ PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/build-gnurad
 ```bash
 PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 -m pytest tests/
 ```
+
+## Open Problems
+* Decoding is not yet part of the skills, but would be a great addition, for the agent to have knowledge about all the popular encoding/decoding schemes for digital communication.
+  * In fact, you can add more blocks of the ideal receiver(channel decode, decryption, error correction, source decoding etc..) in the testsuite objective loop and build LLM agent skill for them.
+* In real systems at very high channel impairment, there will errors in received message. Rather than the testsuite being structured for a hard equality with input (which may be theoretically impossible), a BER threshold for pass may be more appropriate to learn more advanced strategies.
