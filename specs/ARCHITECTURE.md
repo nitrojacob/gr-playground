@@ -68,14 +68,12 @@ gr-playground/
 │   ├── test_dsp.py               # Spectrum analysis & AMC unit tests
 │   ├── test_simulator.py         # Channel simulator unit tests
 │   ├── test_dsp_flaws_and_fixes.py # Edge-case regression tests
-│   ├── test_rtlsdr_capture_skill.py # Capture CLI parser unit tests
 │   └── test_skill_verification.py   # Impairment benchmark suite
 ├── examples/                     # Verification Benchmark Suite & Sample Audio
 │   ├── skill_verification_suite.py # Progressive impairment benchmark runner
 │   └── audio/                    # Speech audio samples for modulation
 ├── grc/                          # GRC Flowgraphs
-│   ├── rtlsdr_wideband_frontend.grc # Live hardware & wideband DDC GUI
-│   └── capture_100m_high_gain.py    # High-gain standalone capture script
+│   └── rtlsdr_wideband_frontend.grc # Live hardware & wideband DDC GUI
 └── specs/                        # Specifications Directory
     ├── PRD.md                    # Product Requirements Document
     └── ARCHITECTURE.md           # Architecture & Design Specifications
@@ -149,7 +147,6 @@ tests/
 ├── test_wideband.py                       ──> Scanning, DDC extraction, in-skill GRC validator test
 ├── test_dsp.py                            ──> Welch PSD, DC removal, AGC, AMC cumulants
 ├── test_simulator.py                      ──> Channel simulator flowgraph & SigMF I/O
-├── test_rtlsdr_capture_skill.py           ──> Hardware capture CLI frequency parser & schema
 └── test_skill_verification.py              ──> Progressive impairment benchmark runner
 ```
 

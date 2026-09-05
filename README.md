@@ -60,16 +60,24 @@ gr-playground/
 │   ├── signal-demodulation/
 │   │   ├── SKILL.md
 │   │   └── scripts/demodulate_signal.py
-│   └── build-gnuradio-flowgraph/
+│   ├── build-gnuradio-flowgraph/
+│   │   ├── SKILL.md
+│   │   └── scripts/build_gnuradio_flowgraph.py
+│   └── rtlsdr-hardware-capture/
 │       ├── SKILL.md
-│       └── scripts/build_gnuradio_flowgraph.py
+│       └── scripts/
+│           ├── capture_rtlsdr.py
+│           └── localize_and_extract.py
 ├── examples/                  # Audio generators & skill verification benchmark suite
 │   ├── audio/
 │   └── skill_verification_suite.py
 ├── grc/                       # Unified GNU Radio Companion (.grc) frontend flowgraph
 │   └── rtlsdr_wideband_frontend.grc
 └── tests/                     # Automated pytest suite (DSP, simulator, wideband)
+    ├── test_ask_modulation.py
     ├── test_dsp.py
+    ├── test_dsp_flaws_and_fixes.py
+    ├── test_realworld_receiver_impairments.py
     ├── test_simulator.py
     ├── test_skill_verification.py
     └── test_wideband.py
@@ -79,147 +87,104 @@ gr-playground/
 
 ## How-To: Analyzing Arbitrary Bands from RTL-SDR & SDR Hardware
 
-This section details how to capture, scan, extract, and analyze arbitrary RF bands recorded from SDR hardware (e.g. RTL-SDR, HackRF, USRP, LimeSDR).
+This section details how to capture, scan, extract, and analyze arbitrary RF bands recorded from SDR hardware (e.g. RTL-SDR, HackRF, USRP, LimeSDR) using natural language agent prompts.
 
 ### Workflow Overview
 
 ```
-[SDR Capture / Raw cu8] ──> [Unified GRC Frontend / read_sigmf] ──> [Wideband SigMF]
-                                                                          │
-                                                                 (Scan Channels)
-                                                                          │
-                                                                          ▼
+[SDR Capture / Raw cu8] ──> [RTL-SDR Capture Skill / read_sigmf] ──> [Wideband SigMF]
+                                                                            │
+                                                                  (Scan Channels)
+                                                                            │
+                                                                            ▼
 [Demodulated Audio/Data] <── [AMC / Sync] <── [Narrowband SigMF] <── (DDC Channelizer)
 ```
 
 ---
 
-### Step 1: Ingest RF Data into Native SigMF
+### Step 1: Live Capture or Ingest RF Data into Native SigMF
 
-- **Option A (GUI Ingestion via GRC Frontend)**:
-  Open `grc/rtlsdr_wideband_frontend.grc` in GNU Radio Companion (`gnuradio-companion`). This single frontend handles both **live RTL-SDR hardware capture** and **wideband file playback**, performing inline conversion of RTL-SDR 8-bit unsigned offset binary (`cu8`) to complex float32 (`cf32`) and exporting directly to SigMF (`.sigmf-data` + `.sigmf-meta`).
+- **Live RTL-SDR Hardware Capture** (via `rtlsdr-hardware-capture` skill):
+  Prompt your agent:
+  > *"Capture 5 seconds of live wideband RF spectrum at 433.92 MHz from RTL-SDR dongle and save to `/tmp/wideband_raw_capture.sigmf-data`."*
 
-- **Option B (Python Automatic Format Detection)**:
-  If data was captured via command-line tools like `rtl_sdr -f 100M -s 2.4M capture.cu8`, `gr_playground.utils.sigmf_io.read_sigmf()` automatically detects `.cu8`/`.raw`/`.bin`/`.cs16` file formats, converts unsigned 8-bit offset samples `(x - 127.5) / 127.5` to `complex64`, and synthesizes a SigMF metadata structure seamlessly.
+- **File Ingestion with Auto Format Detection**:
+  Prompt your agent:
+  > *"Ingest the raw `capture.cu8` file recorded at 100 MHz with sample rate 2.4 MSPS into standard SigMF format."*
 
-```python
-from gr_playground.utils.sigmf_io import read_sigmf
-
-# Automatically reads standard .sigmf-data OR auto-converts raw .cu8 / .bin files!
-samples, meta = read_sigmf("capture.cu8", default_sample_rate=2.4e6, default_center_freq=100e6)
-print(f"Loaded {len(samples):,} samples @ {meta['global']['core:sample_rate']/1e6:.2f} MSPS")
-```
+- **GUI Ingestion via GRC Frontend**:
+  Open [rtlsdr_wideband_frontend.grc](file:///mnt/wksp/kaggle_5dag/experiments/gr-playground/grc/rtlsdr_wideband_frontend.grc) in GNU Radio Companion (`gnuradio-companion`) for live visual capture and interactive playback.
 
 ---
 
 ### Step 2: Scan Wideband Spectrum & Discover Channels
 
-Scan the wideband spectrum capture to discover all active sub-channels, center frequency offsets ($f_{\text{offset}}$), peak power levels, and estimated bandwidths:
+Prompt your agent to scan the wideband spectrum capture for active sub-channels:
 
-```python
-from gr_playground.dsp.channelizer import scan_wideband_channels
+> *"Scan wideband spectrum `/tmp/wideband_raw_capture.sigmf-data` to discover candidate sub-channels, their frequency offsets, power levels, and estimated bandwidths."*
 
-channels = scan_wideband_channels(samples, sample_rate=2.4e6, num_channels_max=5)
-for ch in channels:
-    print(f"Channel {ch['channel_id']}: Offset {ch['freq_offset_hz']/1e3:+.1f} kHz | Power: {ch['power_db']:.1f} dBFS | BW: {ch['bandwidth_hz']/1e3:.1f} kHz")
+*Expected Agent Output:*
+```
+Found 3 candidate sub-channels:
+- Channel 1: Offset +150.0 kHz | Power -12.4 dBFS | BW 100.0 kHz
+- Channel 2: Offset -320.0 kHz | Power -18.1 dBFS | BW 50.0 kHz
+- Channel 3: Offset +450.0 kHz | Power -22.0 dBFS | BW 200.0 kHz
 ```
 
 ---
 
 ### Step 3: Extract Narrowband Channel via Digital Downconverter (DDC)
 
-Translate the target sub-channel from its frequency offset ($f_{\text{offset}}$) to $0\text{ Hz}$ baseband, lowpass filter, decimate, and save as a native narrowband SigMF file:
+Prompt your agent to extract and downconvert a specific sub-channel:
 
-```python
-from gr_playground.dsp.channelizer import extract_channel_flowgraph
-
-# Extract channel at +200 kHz offset, decimate 2.4 MSPS down to 240 kSPS
-extracted_samples, meta = extract_channel_flowgraph(
-    samples,
-    sample_rate=2.4e6,
-    freq_offset_hz=200000.0,
-    target_bw_hz=100000.0,
-    decimation=10,
-    output_sigmf_path="/tmp/channel_200k.sigmf-data"
-)
-```
-
-Alternatively, use the GUI sliders in `grc/rtlsdr_wideband_frontend.grc` to visually select channel frequency offset and cutoff bandwidth.
+> *"Extract sub-channel 1 at +150 kHz offset from `/tmp/wideband_raw_capture.sigmf-data` with decimation 10 and save to `/tmp/channel_150k.sigmf-data`."*
 
 ---
 
 ### Step 4: Run Narrowband Channel Analysis & Demodulation Pipeline
 
-Once the target channel is saved as a narrowband SigMF file, execute the standard `gr-playground` tool pipeline:
+Once the target sub-channel is extracted into a narrowband SigMF file, execute the full analysis and demodulation pipeline using agent prompts:
 
-```bash
-# 1. Analyze Channel Spectrum & SNR
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/signal-analysis/scripts/analyze_signal.py \
-  --input /tmp/channel_200k.sigmf-data
+1. **Analyze Channel Spectrum & SNR** (`signal-analysis` skill):
+   > *"Analyze the signal spectrum, SNR, and occupied bandwidth of `/tmp/channel_150k.sigmf-data`."*
 
-# 2. Perform DC Offset Removal, I/Q Balancing & Filtering
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/signal-cleanup/scripts/cleanup_signal.py \
-  --input /tmp/channel_200k.sigmf-data \
-  --output /tmp/cleaned_channel.sigmf-data
+2. **Perform Signal Cleanup** (`signal-cleanup` skill):
+   > *"Remove DC offset and perform I/Q imbalance correction on `/tmp/channel_150k.sigmf-data` and save to `/tmp/cleaned_channel.sigmf-data`."*
 
-# 3. Classify Modulation Scheme (AM, FM, BPSK, QPSK, QAM)
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/modulation-recognition/scripts/classify_modulation.py \
-  --input /tmp/cleaned_channel.sigmf-data
+3. **Classify Modulation Scheme** (`modulation-recognition` skill):
+   > *"Identify the modulation scheme of `/tmp/cleaned_channel.sigmf-data` using higher-order cumulants."*
 
-# 4. Synchronize Carrier Frequency & Symbol Clock
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/signal-synchronization/scripts/synchronize_signal.py \
-  --input /tmp/cleaned_channel.sigmf-data \
-  --mod FM \
-  --output /tmp/synced_channel.sigmf-data
+4. **Synchronize Carrier & Symbol Clock** (`signal-synchronization` skill):
+   > *"Synchronize carrier frequency offset and symbol clock timing for FM modulation on `/tmp/cleaned_channel.sigmf-data` and save to `/tmp/synced_channel.sigmf-data`."*
 
-# 5. Demodulate Payload into WAV Audio or Bit String
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/signal-demodulation/scripts/demodulate_signal.py \
-  --input /tmp/synced_channel.sigmf-data \
-  --mod FM \
-  --audio_out /tmp/demodulated_audio.wav
-```
+5. **Demodulate Payload** (`signal-demodulation` skill):
+   > *"Demodulate FM payload from `/tmp/synced_channel.sigmf-data` and write audio output to `/tmp/demodulated_audio.wav`."*
 
 ---
 
 ### Step 5: Generate Executable Top Block Python Script
 
-Generate an executable standalone Python `gr.top_block` script tailored to the extracted channel:
+Prompt your agent to generate a standalone GNU Radio Python flowgraph (`gr.top_block`) for the complete receiver chain (`build-gnuradio-flowgraph` skill):
 
-```bash
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/build-gnuradio-flowgraph/scripts/build_gnuradio_flowgraph.py \
-  --input /tmp/channel_200k.sigmf-data \
-  --output_script /tmp/receiver_top_block.py
-
-# Run generated receiver flowgraph
-python3 /tmp/receiver_top_block.py /tmp/channel_200k.sigmf-data /tmp/processed_out.sigmf-data
-```
+> *"Generate an executable standalone GNU Radio top block script for the receiver pipeline processing `/tmp/channel_150k.sigmf-data` and save to `/tmp/receiver_top_block.py`."*
 
 ---
 
-## Standard Skill Tool Commands
+## Agent Prompts & Prepackaged Skills
 
-```bash
-# 1. Generate test signal with SigMF metadata
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/generate-test-signal/scripts/generate_test_signal.py --source audio --mod FM --snr 15 --cfo 2500 --output /tmp/test_signal/signal.sigmf-data
+The table below lists the prepackaged skills in `.agents/skills/` alongside representative natural language prompts that invoke them:
 
-# 2. Analyze signal spectrum and SNR
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/signal-analysis/scripts/analyze_signal.py --input /tmp/test_signal/signal.sigmf-data
-
-# 3. Perform DC removal, I/Q balancing, filtering
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/signal-cleanup/scripts/cleanup_signal.py --input /tmp/test_signal/signal.sigmf-data --output /tmp/cleaned.sigmf-data
-
-# 4. Classify modulation scheme
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/modulation-recognition/scripts/classify_modulation.py --input /tmp/cleaned.sigmf-data
-
-# 5. Synchronize carrier & clock
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/signal-synchronization/scripts/synchronize_signal.py --input /tmp/cleaned.sigmf-data --mod QPSK --output /tmp/synced.sigmf-data
-
-# 6. Demodulate payload
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/signal-demodulation/scripts/demodulate_signal.py --input /tmp/synced.sigmf-data --mod FM --audio_out /tmp/demod_audio.wav
-
-# 7. Generate GNU Radio Top Block script
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/build-gnuradio-flowgraph/scripts/build_gnuradio_flowgraph.py --input /tmp/test_signal/signal.sigmf-data --output_script /tmp/receiver_top_block.py
-```
+| Skill Directory | Skill Name | Example Agent Prompt |
+| :--- | :--- | :--- |
+| `.agents/skills/analyze-rf-signal` | `analyze-rf-signal` | *"Analyse this RF signal `/tmp/wideband_raw_capture.sigmf-data` and run the full end-to-end DSP analysis pipeline."* |
+| `.agents/skills/generate-test-signal` | `generate-test-signal` | *"Generate a 15 dB SNR FM test signal with 2.5 kHz CFO from audio source and save to `/tmp/test_signal.sigmf-data`."* |
+| `.agents/skills/rtlsdr-hardware-capture` | `rtlsdr-hardware-capture` | *"Capture 5s of live wideband RF spectrum at 433.92 MHz from RTL-SDR, list channels, and extract channel 1 to `/tmp/target.sigmf-data`."* |
+| `.agents/skills/signal-analysis` | `signal-analysis` | *"Inspect spectrum, measure SNR via M2M4, and estimate bandwidth for `/tmp/target.sigmf-data`."* |
+| `.agents/skills/signal-cleanup` | `signal-cleanup` | *"Apply DC blocker, Gram-Schmidt I/Q balancing, and lowpass filtering to `/tmp/target.sigmf-data`."* |
+| `.agents/skills/modulation-recognition` | `modulation-recognition` | *"Classify modulation scheme of `/tmp/target.sigmf-data` using higher-order cumulants."* |
+| `.agents/skills/signal-synchronization` | `signal-synchronization` | *"Recover CFO and synchronize symbol clock timing for QPSK signal `/tmp/target.sigmf-data`."* |
+| `.agents/skills/signal-demodulation` | `signal-demodulation` | *"Demodulate BPSK payload from `/tmp/synced.sigmf-data` into decoded bits or audio file."* |
+| `.agents/skills/build-gnuradio-flowgraph` | `build-gnuradio-flowgraph` | *"Generate executable GNU Radio Python flowgraph receiver script for `/tmp/target.sigmf-data`."* |
 
 ### Running Test Verification Suite
 
