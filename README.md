@@ -26,6 +26,49 @@ The playground consists of three core pillars:
 
 ---
 
+## How-To: Analyzing Arbitrary Bands from RTL-SDR & SDR Hardware
+
+This section details how to analyze arbitrary RF bands recorded from SDR hardware (e.g., RTL-SDR, HackRF, USRP, LimeSDR) using natural language agent prompts.
+
+### Primary End-to-End Skills:
+
+> *"Capture 5 seconds of live wideband RF spectrum at 433.92 MHz from RTL-SDR dongle and save to `/tmp/wideband_raw_capture.sigmf-data`."*
+
+> *"Analyse this RF signal `/tmp/wideband_raw_capture.sigmf-data` and run the full end-to-end DSP analysis pipeline."*
+
+---
+
+
+
+### Step-by-Step Execution Using Sub-Skills (Lower-Level Components)
+
+If you require isolated, step-by-step control over individual DSP steps, you can invoke the individual **sub-skills** that power `analyze-rf-signal` under the hood:
+
+#### 1. Hardware Capture & Ingestion
+- **Live RTL-SDR Hardware Capture** (`rtlsdr-hardware-capture` skill):
+  > *"Capture 5 seconds of live wideband RF spectrum at 433.92 MHz from RTL-SDR dongle and save to `/tmp/wideband_raw_capture.sigmf-data`."*
+- **File Ingestion with Auto Format Detection**:
+  > *"Ingest the raw `capture.cu8` file recorded at 100 MHz with sample rate 2.4 MSPS into standard SigMF format."*
+- **GUI Ingestion via GRC Frontend**:
+  Open [rtlsdr_wideband_frontend.grc](file:///mnt/wksp/kaggle_5dag/experiments/gr-playground/grc/rtlsdr_wideband_frontend.grc) in GNU Radio Companion for visual capture and interactive playback.
+
+#### 2. Individual Sub-Skill Steps
+- **Spectrum Analysis** (`signal-analysis` sub-skill):
+  > *"Measure SNR, Welch PSD noise floor, and occupied bandwidth of `/tmp/channel_150k.sigmf-data`."*
+- **Signal Cleanup** (`signal-cleanup` sub-skill):
+  > *"Remove DC offset and perform I/Q imbalance correction on `/tmp/channel_150k.sigmf-data`."*
+- **Modulation Classification** (`modulation-recognition` sub-skill):
+  > *"Identify the modulation scheme of `/tmp/cleaned_channel.sigmf-data` using higher-order cumulants."*
+- **Synchronization** (`signal-synchronization` sub-skill):
+  > *"Synchronize carrier frequency offset and symbol clock timing on `/tmp/cleaned_channel.sigmf-data`."*
+- **Demodulation** (`signal-demodulation` sub-skill):
+  > *"Demodulate FM payload from `/tmp/synced_channel.sigmf-data` to `/tmp/demodulated_audio.wav`."*
+- **Flowgraph Script Generator** (`build-gnuradio-flowgraph` sub-skill):
+  > *"Generate an executable standalone GNU Radio top block script for `/tmp/channel_150k.sigmf-data`."*
+
+---
+
+
 ## Directory Structure & Agent Skills
 
 ```
@@ -89,86 +132,7 @@ gr-playground/
 
 ---
 
-## How-To: Analyzing Arbitrary Bands from RTL-SDR & SDR Hardware
-
-This section details how to analyze arbitrary RF bands recorded from SDR hardware (e.g., RTL-SDR, HackRF, USRP, LimeSDR) using natural language agent prompts.
-
-### 🌟 Primary End-to-End Skill: `analyze-rf-signal`
-
-The **`analyze-rf-signal`** skill is the main orchestrator for gr-playground. Giving a single prompt to your agent triggers the entire DSP pipeline automatically:
-
-> *"Analyse this RF signal `/tmp/wideband_raw_capture.sigmf-data` and run the full end-to-end DSP analysis pipeline."*
-
-#### Automated Pipeline Steps (Executed Under the Hood):
-```
-[Wideband SigMF Capture]
-          │
-          ├──> 1. Scan Wideband Spectrum & Discover Candidate Channels
-          ├──> 2. Extract Narrowband Target Channel (DDC Channelizer)
-          ├──> 3. Spectral Analysis (Welch PSD, SNR, Occupied BW)
-          ├──> 4. Signal Cleanup (DC Blocker, Gram-Schmidt I/Q Balancing)
-          ├──> 5. Modulation Recognition (Higher-Order Cumulants AMC)
-          ├──> 6. CFO Recovery & Symbol Timing Synchronization
-          ├──> 7. Demodulate Payload (WAV Audio / Decoded Bits)
-          └──> 8. Generate Executable Top Block Python Script (`receiver_top_block.py`)
-```
-
----
-
-### Step-by-Step Execution Using Sub-Skills (Lower-Level Components)
-
-If you require isolated, step-by-step control over individual DSP steps, you can invoke the individual **sub-skills** that power `analyze-rf-signal` under the hood:
-
-#### 1. Hardware Capture & Ingestion
-- **Live RTL-SDR Hardware Capture** (`rtlsdr-hardware-capture` skill):
-  > *"Capture 5 seconds of live wideband RF spectrum at 433.92 MHz from RTL-SDR dongle and save to `/tmp/wideband_raw_capture.sigmf-data`."*
-- **File Ingestion with Auto Format Detection**:
-  > *"Ingest the raw `capture.cu8` file recorded at 100 MHz with sample rate 2.4 MSPS into standard SigMF format."*
-- **GUI Ingestion via GRC Frontend**:
-  Open [rtlsdr_wideband_frontend.grc](file:///mnt/wksp/kaggle_5dag/experiments/gr-playground/grc/rtlsdr_wideband_frontend.grc) in GNU Radio Companion for visual capture and interactive playback.
-
-#### 2. Individual Sub-Skill Steps
-- **Spectrum Analysis** (`signal-analysis` sub-skill):
-  > *"Measure SNR, Welch PSD noise floor, and occupied bandwidth of `/tmp/channel_150k.sigmf-data`."*
-- **Signal Cleanup** (`signal-cleanup` sub-skill):
-  > *"Remove DC offset and perform I/Q imbalance correction on `/tmp/channel_150k.sigmf-data`."*
-- **Modulation Classification** (`modulation-recognition` sub-skill):
-  > *"Identify the modulation scheme of `/tmp/cleaned_channel.sigmf-data` using higher-order cumulants."*
-- **Synchronization** (`signal-synchronization` sub-skill):
-  > *"Synchronize carrier frequency offset and symbol clock timing on `/tmp/cleaned_channel.sigmf-data`."*
-- **Demodulation** (`signal-demodulation` sub-skill):
-  > *"Demodulate FM payload from `/tmp/synced_channel.sigmf-data` to `/tmp/demodulated_audio.wav`."*
-- **Flowgraph Script Generator** (`build-gnuradio-flowgraph` sub-skill):
-  > *"Generate an executable standalone GNU Radio top block script for `/tmp/channel_150k.sigmf-data`."*
-
----
-
-## Agent Prompts & Prepackaged Skills
-
-The table below lists all prepackaged skills in `.agents/skills/`. **`analyze-rf-signal`** is the primary end-to-end entrypoint, while sub-skills handle specific modular DSP tasks:
-
-### 🎯 Primary End-to-End Orchestration Skill
-| Skill Directory | Skill Name | Primary Agent Prompt | Description |
-| :--- | :--- | :--- | :--- |
-| `.agents/skills/analyze-rf-signal` | `analyze-rf-signal` | *"Analyse this RF signal `/tmp/wideband_raw_capture.sigmf-data` and run the full end-to-end DSP analysis pipeline."* | **Primary Entrypoint**: Automatically scans spectrum, prompts for channel selection, and runs end-to-end DDC, cleanup, AMC, sync, demod, and top_block script generation. |
-
-### 🛠️ Hardware Capture & Data Generation Skills
-| Skill Directory | Skill Name | Example Agent Prompt | Description |
-| :--- | :--- | :--- | :--- |
-| `.agents/skills/rtlsdr-hardware-capture` | `rtlsdr-hardware-capture` | *"Capture 5s of live wideband RF spectrum at 433.92 MHz from RTL-SDR, list channels, and extract channel 1 to `/tmp/target.sigmf-data`."* | Captures live RF from RTL-SDR hardware dongles directly into SigMF. |
-| `.agents/skills/generate-test-signal` | `generate-test-signal` | *"Generate a 15 dB SNR FM test signal with 2.5 kHz CFO from audio source and save to `/tmp/test_signal.sigmf-data`."* | Synthesizes impaired test signals (AM, FM, PSK, QAM) with SigMF headers. |
-
-### 🧩 Sub-Skills & Component DSP Modules (Triggered by `analyze-rf-signal`)
-| Skill Directory | Skill Name | Example Agent Prompt | Component Role |
-| :--- | :--- | :--- | :--- |
-| `.agents/skills/signal-analysis` | `signal-analysis` | *"Measure SNR, Welch PSD noise floor, and occupied bandwidth of `/tmp/target.sigmf-data` without running full demodulation."* | Sub-skill: Inspects PSD, SNR, occupied BW, and DC offset. |
-| `.agents/skills/signal-cleanup` | `signal-cleanup` | *"Apply DC blocker, Gram-Schmidt I/Q balancing, and lowpass filtering to `/tmp/target.sigmf-data`."* | Sub-skill: Cleans up IQ imbalance and DC bias. |
-| `.agents/skills/modulation-recognition` | `modulation-recognition` | *"Classify modulation scheme of `/tmp/target.sigmf-data` using higher-order cumulants."* | Sub-skill: Classifies modulation scheme via $C_{20}\dots C_{63}$ cumulants. |
-| `.agents/skills/signal-synchronization` | `signal-synchronization` | *"Recover CFO and synchronize symbol clock timing for QPSK signal `/tmp/target.sigmf-data`."* | Sub-skill: Recovers CFO and Gardner symbol clock locks. |
-| `.agents/skills/signal-demodulation` | `signal-demodulation` | *"Demodulate BPSK payload from `/tmp/synced.sigmf-data` into decoded bits or audio file."* | Sub-skill: Demodulates WAV audio or sliced bitstreams. |
-| `.agents/skills/build-gnuradio-flowgraph` | `build-gnuradio-flowgraph` | *"Generate executable GNU Radio Python flowgraph receiver script for `/tmp/target.sigmf-data`."* | Sub-skill: Generates standalone Python `top_block` scripts & validates GRC schemas. |
-
-### Running Test Verification Suite
+## Running Test Verification Suite
 
 Execute all tests in proper architectural layer order:
 
@@ -182,3 +146,4 @@ Execute all tests in proper architectural layer order:
 * Decoding is not yet part of the skills, but would be a great addition, for the agent to have knowledge about all the popular encoding/decoding schemes for digital communication.
   * In fact, you can add more blocks of the ideal receiver(channel decode, decryption, error correction, source decoding etc..) in the testsuite objective loop and build LLM agent skill for them.
 * In real systems at very high channel impairment, there will errors in received message. Rather than the testsuite being structured for a hard equality with input (which may be theoretically impossible), a BER threshold for pass may be more appropriate to learn more advanced strategies.
+* A hardcoded decision tree (modulation_id.py) is used for classification of modulation schemes. Explore possibility of the LLM agent training a small MLP for classification. (AI training AI)

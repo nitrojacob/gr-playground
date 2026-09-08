@@ -14,7 +14,6 @@
 | - Channel Impairments |     | - AMC & Cumulants     |     | - Pytest Suite           |
 | - Source Synthesizer  |     | - DDC & Sync          |     | - Skill Benchmarks       |
 +-----------------------+     +-----------------------+     +--------------------------+
-```
                                            │
          ┌─────────────────────────────────┼─────────────────────────────────┐
          │                                 │                                 │
@@ -41,6 +40,14 @@
 |      (gr.top_block, filter, analog, digital, channels, osmosdr, SigMF I/O)            |
 +---------------------------------------------------------------------------------------+
 ```
+
+### Summary of Core Pillars
+
+| Pillar | Module Location | Key Components / Files | Key Responsibilities & Outputs |
+| :--- | :--- | :--- | :--- |
+| **Pillar I: Simulator** | `gr_playground.simulator` | `sources.py`, `modulators.py`, `impairments.py`, `sigmf_writer.py`, `channel_simulator.py` | Synthesizes analog/digital/multicarrier signals with AWGN, CFO, SRO, DC offset, and multipath; exports SigMF datasets. |
+| **Pillar II: Modular DSP Library** | `gr_playground.dsp`, `gr_playground.utils` | `channelizer.py`, `spectrum.py`, `filtering.py`, `modulation_id.py`, `synchronization.py`, `demodulation.py`, `flowgraph_builder.py`, `sigmf_io.py` | Performs Welch PSD scanning, DDC sub-channel extraction, Gram-Schmidt cleanup, AMC cumulant classification, Costas/symbol sync, demodulation, and GRC schema validation. |
+| **Pillar III: Testcases & Benchmarks** | `tests/` | `test_realworld_receiver_impairments.py`, `test_wideband.py`, `test_dsp.py`, `test_simulator.py`, `test_dsp_flaws_and_fixes.py`, `test_multicarrier.py`, `test_skill_verification.py` | Evaluates DSP algorithms and agent skills against realistic real-world receiver non-idealities across 33 automated test cases. |
 
 ---
 
@@ -127,11 +134,14 @@ Extracts zero-mean normalized Higher-Order Cumulants:
 - **Fourth-Order**: $C_{40} = E[x^4] - 3 E[x^2]^2$, $C_{42} = E[|x|^4] - |E[x^2]|^2 - 2 E[|x|^2]^2$
 
 Decision rules:
-- **Analog FM / GFSK**: $C_{40} \approx 0$ (low phase symmetry) and $C_{42} \approx 2.0$.
-- **BPSK**: $C_{40} \approx 2.0$ (2-state phase symmetry).
-- **QPSK**: $C_{40} \approx -1.0$, $C_{42} \approx -1.0$.
-- **16-QAM**: $C_{40} \approx -0.68$, $C_{42} \approx -0.68$.
-- **Noise Squelch**: Pre-checks $SNR < 1.5\text{ dB}$ to prevent false positives on noise.
+
+| Modulation Scheme | $C_{40}$ Expected | $C_{42}$ Expected | Classification Criteria / Notes |
+| :--- | :--- | :--- | :--- |
+| **Analog FM / GFSK** | $\approx 0.0$ | $\approx 2.0$ | Low phase symmetry; constant envelope |
+| **BPSK** | $\approx 2.0$ | N/A | 2-state phase symmetry |
+| **QPSK** | $\approx -1.0$ | $\approx -1.0$ | 4-fold constellation symmetry |
+| **16-QAM** | $\approx -0.68$ | $\approx -0.68$ | Multi-ring amplitude/phase distribution |
+| **Noise Squelch** | N/A | N/A | Pre-checks $SNR < 1.5\text{ dB}$ to prevent false positives on noise |
 
 #### 3. In-Skill GRC Flowgraph Validation (`flowgraph_builder.py` & `build_gnuradio_flowgraph.py`)
 Validation of GNU Radio Companion (`.grc`) YAML schema and block presence lives directly inside `FlowgraphBuilder.validate_grc_flowgraph` and the `build-gnuradio-flowgraph` agent skill:
@@ -156,6 +166,16 @@ tests/
 ├── test_multicarrier.py                   ──> OFDM & SC-FDMA parameter sweeps (spacing, BW, CP, PAPR)
 └── test_skill_verification.py              ──> Progressive impairment benchmark runner
 ```
+
+| Test Suite Module | Target Scope | Key Scenarios Tested |
+| :--- | :--- | :--- |
+| `test_realworld_receiver_impairments.py` | Physical Channel Non-idealities | $5\text{ dB}$ SNR, Adjacent Channel Interference (ACI), Rayleigh multipath fading, 8-bit ADC dynamic range clipping |
+| `test_dsp_flaws_and_fixes.py` | Algorithm Edge Cases & Regression | M2M4 SNR metric behavior on constant envelope signals, FIR transition band masks, CFO phase rotation artifacts |
+| `test_wideband.py` | Spectrum Scanning & DDC | Wideband channelization, FIR DDC sub-channel extraction, In-Skill GRC schema/block presence validator |
+| `test_dsp.py` | Core DSP Primitives | Welch PSD noise floor estimation, DC blocker, AGC2, Higher-order cumulant calculations ($C_{20}\dots C_{42}$) |
+| `test_simulator.py` | Simulator Engine & I/O | `ChannelSimulatorFlowgraph` execution, SigMF v1.0 metadata/dataset writing, fallback raw file reading |
+| `test_multicarrier.py` | Multicarrier Processing | OFDM and SC-FDMA parameter sweeps (subcarrier spacing, CP length, DFT precoding PAPR reduction) |
+| `test_skill_verification.py` | Agent Skill Benchmarks | End-to-end skill verification pipeline across progressive channel impairment benchmarks |
 
 ---
 
