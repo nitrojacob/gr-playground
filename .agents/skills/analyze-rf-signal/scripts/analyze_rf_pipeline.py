@@ -22,7 +22,7 @@ import numpy as np
 
 # Add project root and skill script directories to sys.path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
@@ -94,15 +94,33 @@ def run_rf_analysis_pipeline(input_path, scan_only=False, channel_index=1, manua
 
         # Step 2: DDC Channel Extraction
         extracted_sigmf = os.path.join(output_dir, f"extracted_ch_{int(abs_rf/1e3)}k.sigmf-data")
-        extracted_samples, ext_meta = extract_channel_flowgraph(
-            samples,
-            sample_rate=sample_rate,
-            freq_offset_hz=offset_hz,
-            target_bw_hz=target_ch.get("bandwidth_hz", 100000.0),
-            decimation=decimation,
-            center_freq=center_freq,
-            output_sigmf_path=extracted_sigmf
-        )
+        if len(samples) > 1000000:
+            from scipy import signal
+            target_bw = target_ch.get("bandwidth_hz", 100000.0)
+            taps = signal.firwin(101, (target_bw / 2.0) / (sample_rate / 2.0))
+            chunk_size = 2000000
+            extracted_chunks = []
+            for c_i in range(0, len(samples), chunk_size):
+                chunk = samples[c_i:c_i+chunk_size]
+                t_chunk = (np.arange(c_i, c_i + len(chunk), dtype=np.float64)) / sample_rate
+                phase = (-2.0 * np.pi * offset_hz * t_chunk).astype(np.float32)
+                rot = np.cos(phase) + 1j * np.sin(phase)
+                trans = chunk * rot
+                filt = signal.lfilter(taps, 1.0, trans)
+                extracted_chunks.append(filt[::decimation].astype(np.complex64))
+            extracted_samples = np.concatenate(extracted_chunks)
+            write_sigmf(extracted_sigmf, extracted_samples, sample_rate=sample_rate/decimation, center_freq=abs_rf)
+            ext_meta = {}
+        else:
+            extracted_samples, ext_meta = extract_channel_flowgraph(
+                samples,
+                sample_rate=sample_rate,
+                freq_offset_hz=offset_hz,
+                target_bw_hz=target_ch.get("bandwidth_hz", 100000.0),
+                decimation=decimation,
+                center_freq=center_freq,
+                output_sigmf_path=extracted_sigmf
+            )
         ch_rate = sample_rate / decimation
 
         # Step 3: Spectral Analysis
@@ -115,8 +133,11 @@ def run_rf_analysis_pipeline(input_path, scan_only=False, channel_index=1, manua
         write_sigmf(cleaned_sigmf, cleaned_samples, sample_rate=ch_rate, center_freq=abs_rf)
         print(f"🧼 [2/5 Signal Cleanup] Applied Gram-Schmidt IQ balancing, DC blocker, and bandpass filter.")
 
+        # Slice active frame segment for AMC, sync, and demodulation (max 500k samples ~ 2 sec)
+        proc_samples = cleaned_samples[:500000]
+
         # Step 5: Automatic Modulation Recognition
-        preds, cumulants, const_stats = classify_modulation(cleaned_samples)
+        preds, cumulants, const_stats = classify_modulation(proc_samples)
         top_mod, top_conf = preds[0] if preds else ("Unknown", 0.0)
         print(f"🔍 [3/5 Modulation ID] Predicted Modulation: {top_mod} ({top_conf*100:.1f}% confidence)")
 
@@ -132,16 +153,17 @@ def run_rf_analysis_pipeline(input_path, scan_only=False, channel_index=1, manua
         elif top_mod in ["AM", "FM"]:
             print(f"⏱️ [4/5 Synchronization] Analog {top_mod} signal. Proceeding to demodulation...")
             audio_out = os.path.join(output_dir, f"demodulated_audio_{top_mod.lower()}.wav")
-            audio_samples = demodulate_signal_flowgraph(cleaned_samples, sample_rate=ch_rate, mod_type=top_mod, output_wav_path=audio_out)
+            audio_samples = demodulate_signal_flowgraph(proc_samples, sample_rate=ch_rate, mod_type=top_mod, output_wav_path=audio_out)
             print(f"🎙️ [5/5 Demodulation] Demodulated analog {top_mod} audio to: {audio_out}")
             payload_result = {"audio_path": audio_out, "audio_samples_count": len(audio_samples)}
         else:
-            print(f"⏱️ [4/5 Synchronization] Running Costas Loop & Symbol Sync for {top_mod}...")
-            synced_samples, evm_pct = synchronize_signal_flowgraph(cleaned_samples, sample_rate=ch_rate, mod_type=top_mod)
+            sync_res = synchronize_signal_flowgraph(proc_samples, sample_rate=ch_rate, mod_type=top_mod)
+            synced_samples = sync_res["synced_samples"]
+            evm_pct = sync_res["evm_percent"]
             write_sigmf(synced_sigmf, synced_samples, sample_rate=ch_rate, center_freq=abs_rf)
-            demod_out = demodulate_signal_flowgraph(synced_samples, sample_rate=ch_rate, mod_type=top_mod)
-            print(f"🎙️ [5/5 Demodulation] Synchronized (EVM: {evm_pct:.1f}%) and demodulated {top_mod} bitstream.")
-            payload_result = {"evm_pct": evm_pct, "demod_samples_count": len(demod_out)}
+            demod_bits, preview_str = demodulate_signal_flowgraph(synced_samples, sample_rate=ch_rate, mod_type=top_mod)
+            print(f"🎙️ [5/5 Demodulation] Synchronized (EVM: {evm_pct:.1f}%) and demodulated {top_mod} bitstream: {preview_str}")
+            payload_result = {"evm_pct": evm_pct, "demod_bits_count": len(demod_bits), "preview": preview_str}
 
         # Step 7: GNU Radio Flowgraph Top Block Generator
         script_path = os.path.join(output_dir, f"receiver_top_block_{top_mod.lower()}.py")

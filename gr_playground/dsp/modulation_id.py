@@ -140,34 +140,54 @@ def classify_modulation(samples):
 
     amp_var = features["amp_var"]
     c20 = cumulants["C20"]
+    c63 = cumulants["C63"]
 
     if is_noise:
         scores["Noise"] += 0.85
-    elif spectral_flatness < 0.80 and 2.5 <= amp_kurt <= 3.4 and c40 < 0.40 and amp_var > 0.05 and freq_var <= 0.35:
-        # Multicarrier signals (OFDM / SC-FDMA): High spectral flatness across subcarriers, PAPR amp_var > 0.05, Gaussian-like kurtosis ~ 3.0
+    elif spectral_flatness < 0.80 and 2.5 <= amp_kurt <= 3.4 and c40 < 0.40 and amp_var > 0.05 and 0.20 < freq_var <= 0.35:
+        # Multicarrier signals (OFDM / SC-FDMA)
         if amp_kurt > 2.85:
             scores["OFDM"] += 0.85
             scores["SC-FDMA"] += 0.30
         else:
             scores["SC-FDMA"] += 0.85
             scores["OFDM"] += 0.30
-    elif amp_var > 0.50:
-        # Amplitude Shift Keying (ASK / OOK): high envelope variance (> 0.50)
+    elif freq_var < 0.08 and c20 >= 0.70 and amp_kurt >= 2.8:
+        # Amplitude Modulation (AM): Speech audio AM has zero frequency variance (freq_var < 0.08) and high C20
+        scores["AM"] += 0.85
+    elif amp_var < 0.05 and c40 < 0.20:
+        # Constant Envelope schemes: FM vs GFSK
+        if freq_var > 0.35:
+            scores["GFSK"] += 0.85
+            scores["FM"] += 0.20
+        else:
+            scores["FM"] += 0.85
+            scores["GFSK"] += 0.20
+    elif amp_var >= 0.40 and amp_kurt < 2.0:
+        # Amplitude Shift Keying (ASK / OOK): high envelope variance (amp_var ~ 0.50), bimodal kurtosis < 2.0
         scores["ASK"] += 0.85
-        scores["AM"] += 0.1
-    elif c40 >= 1.2 and c20 >= 0.70 and amp_var <= 0.30:
-        # Binary Phase Shift Keying (BPSK): C40 >= 1.2, C20 >= 0.70, low amp_var
+        scores["AM"] += 0.10
+    elif c20 >= 0.70 and c40 >= 1.0:
+        # Binary Phase Shift Keying (BPSK): C20 >= 0.70, C40 >= 1.0
         scores["BPSK"] += 0.85
-        scores["QPSK"] += 0.1
-    elif 0.70 <= c40 < 1.2 and c20 < 0.30 and amp_var <= 0.30:
-        # Quadrature Phase Shift Keying (QPSK): C40 ~ 0.87, C20 ~ 0.00
+        scores["QPSK"] += 0.10
+    elif c20 < 0.30 and c40 >= 0.65:
+        # Quadrature Phase Shift Keying (QPSK): C20 ~ 0.00, C40 ~ 0.75
         scores["QPSK"] += 0.85
-        scores["16QAM"] += 0.3
-    elif 0.35 <= c40 < 0.70:
-        # 16-QAM / 64-QAM: C40 ~ 0.58
-        scores["16QAM"] += 0.85
-        scores["64QAM"] += 0.5
-    else:  # Analog (AM or FM)
+        scores["16QAM"] += 0.30
+    elif amp_var >= 0.05 and c40 < 0.20 and c20 < 0.30:
+        # 8-PSK: Constant-ish magnitude (amp_var ~ 0.09), C40 ~ 0.05, C20 ~ 0.00
+        scores["8PSK"] += 0.85
+        scores["QPSK"] += 0.30
+    elif 0.30 <= c40 < 0.65:
+        # 16-QAM vs 64-QAM
+        if c63 >= 15.0 or amp_var >= 0.185:
+            scores["64QAM"] += 0.85
+            scores["16QAM"] += 0.40
+        else:
+            scores["16QAM"] += 0.85
+            scores["64QAM"] += 0.40
+    else:  # Fallback
         if freq_var > 0.4:
             scores["FM"] += 0.8
             scores["GFSK"] += 0.5

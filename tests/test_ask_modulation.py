@@ -34,7 +34,7 @@ def test_ask_modulation_classification_high_snr():
     print(f"Extracted Cumulants: {cumulants}")
     print(f"Constellation Stats: {stats}")
     
-    assert top_mod in ["ASK", "AM"], f"Expected ASK classification, but got {top_mod} ({top_conf*100:.1f}%)"
+    assert top_mod == "ASK", f"Expected ASK classification, but got {top_mod} ({top_conf*100:.1f}%)"
     assert top_conf > 0.40, f"Confidence too low: {top_conf}"
 
 def test_bpsk_vs_ask_classification_distinction():
@@ -59,4 +59,4 @@ def test_bpsk_vs_ask_classification_distinction():
     ask_samples = (ask_amp * np.exp(1j * 2 * np.pi * 5000.0 * t)).astype(np.complex64)
     
     ask_preds, _, ask_stats = classify_modulation(ask_samples)
-    assert ask_preds[0][0] in ["ASK", "AM"], f"Expected ASK, got {ask_preds[0][0]}"
+    assert ask_preds[0][0] == "ASK", f"Expected ASK, got {ask_preds[0][0]}"

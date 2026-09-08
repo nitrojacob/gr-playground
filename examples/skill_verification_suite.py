@@ -103,7 +103,7 @@ def run_verification_benchmark():
             # Verification Criteria:
             # - For Clean/Moderate: Valid Candidate Match
             # - CFO error within +/- 2500 Hz
-            mod_pass = (pred_mod.upper() == mod.upper()) or (mod in ["OFDM", "SC-FDMA"] and pred_mod in ["OFDM", "SC-FDMA", "QPSK", "16QAM"]) or (tier_name in ["Tier 3 (Severe)", "Tier 4 (Extreme)"])
+            mod_pass = (pred_mod.upper() == mod.upper())
             cfo_error = abs(sync_res["estimated_cfo_hz"] - config["cfo_hz"])
             cfo_pass = cfo_error < 2500.0 or tier_name == "Tier 4 (Extreme)"
 

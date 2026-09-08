@@ -69,7 +69,7 @@ def test_analyze_rf_pipeline_end_to_end_execution():
             source_type="audio",
             mod_type="FM",
             sample_rate=32000,
-            num_samples=8192,
+            num_samples=32768,
             snr_db=25.0,
             cfo_hz=50.0,
             output_filepath=sigmf_path
@@ -83,4 +83,4 @@ def test_analyze_rf_pipeline_end_to_end_execution():
         assert os.path.exists(ch_rep["extracted_sigmf"])
         assert os.path.exists(ch_rep["cleaned_sigmf"])
         assert os.path.exists(ch_rep["generated_top_block_script"])
-        assert ch_rep["predicted_modulation"] in ["FM", "AM", "Noise", "GFSK"]
+        assert ch_rep["predicted_modulation"] == "FM", f"Expected FM, got {ch_rep['predicted_modulation']}"

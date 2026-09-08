@@ -148,6 +148,6 @@ def test_realworld_modulation_classification_under_low_snr_and_phase_noise(mod_t
 
     assert len(preds) > 0
     top_mod, conf = preds[0]
-    # Mod classification should predict candidate from valid pool
-    assert top_mod in ["QPSK", "BPSK", "8PSK", "16QAM", "64QAM", "GFSK", "ASK", "AM", "FM", "OFDM", "SC-FDMA", "Noise"], \
-        f"Unexpected classification for {mod_type}: got {top_mod} ({conf*100:.1f}%)"
+    # Mod classification must yield exact match with simulated ground truth scheme
+    assert top_mod.upper() == mod_type.upper(), \
+        f"Exact match classification failed for {mod_type}: got {top_mod} ({conf*100:.1f}%)"

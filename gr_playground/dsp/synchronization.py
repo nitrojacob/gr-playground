@@ -39,29 +39,29 @@ def calculate_evm(samples, constellation_type="QPSK"):
     
     # Target reference symbols
     if constellation_type.upper() == "BPSK":
-        targets = np.array([-1.0, 1.0])
-    else:  # QPSK
-        targets = np.array([1+1j, -1+1j, 1-1j, -1-1j]) / np.sqrt(2.0)
+        targets = np.array([-1.0, 1.0], dtype=np.complex64)
+    elif constellation_type.upper() == "8PSK":
+        angles = np.arange(8) * np.pi / 4.0
+        targets = np.exp(1j * angles).astype(np.complex64)
+    else:  # QPSK / QAM fallback
+        targets = (np.array([1+1j, -1+1j, 1-1j, -1-1j]) / np.sqrt(2.0)).astype(np.complex64)
     
-    # Scale signal power to reference
+    # Take first 10,000 samples for EVM calculation
+    y = np.asarray(samples[:10000], dtype=np.complex64)
     p_sig = np.mean(np.abs(y)**2)
     if p_sig > 0:
         y = y / np.sqrt(p_sig)
     
-    # Nearest symbol mapping
-    err_sq = []
-    for point in y:
-        closest = targets[np.argmin(np.abs(targets - point))]
-        err_sq.append(np.abs(point - closest)**2)
-    
-    evm_rms = np.sqrt(np.mean(err_sq))
+    dists = np.abs(y[:, None] - targets[None, :])
+    min_dists = np.min(dists, axis=1)
+    evm_rms = np.sqrt(np.mean(min_dists**2))
     return float(evm_rms * 100.0)
 
 class SynchronizationFlowgraph(gr.top_block):
     def __init__(self, samples, sample_rate=32000, cfo_coarse_hz=0.0, mod_type="QPSK", samples_per_symbol=4):
         super(SynchronizationFlowgraph, self).__init__("SynchronizationFlowgraph")
         
-        self.src = blocks.vector_source_c(samples.tolist(), False)
+        self.src = blocks.vector_source_c(samples, False)
         last_block = self.src
 
         # 1. Coarse CFO Rotator Block
