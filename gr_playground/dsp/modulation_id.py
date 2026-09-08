@@ -133,6 +133,8 @@ def classify_modulation(samples):
         "AM": 0.05,
         "ASK": 0.05,
         "GFSK": 0.05,
+        "OFDM": 0.05,
+        "SC-FDMA": 0.05,
         "Noise": 0.05
     }
 
@@ -141,6 +143,14 @@ def classify_modulation(samples):
 
     if is_noise:
         scores["Noise"] += 0.85
+    elif spectral_flatness < 0.80 and 2.5 <= amp_kurt <= 3.4 and c40 < 0.40 and amp_var > 0.05 and freq_var <= 0.35:
+        # Multicarrier signals (OFDM / SC-FDMA): High spectral flatness across subcarriers, PAPR amp_var > 0.05, Gaussian-like kurtosis ~ 3.0
+        if amp_kurt > 2.85:
+            scores["OFDM"] += 0.85
+            scores["SC-FDMA"] += 0.30
+        else:
+            scores["SC-FDMA"] += 0.85
+            scores["OFDM"] += 0.30
     elif amp_var > 0.50:
         # Amplitude Shift Keying (ASK / OOK): high envelope variance (> 0.50)
         scores["ASK"] += 0.85

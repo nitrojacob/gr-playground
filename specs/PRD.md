@@ -50,8 +50,9 @@ The simulator provides automated signal generation and physical layer impairment
 
 - **PRD-SIM-1 (Sources)**: Support continuous complex/float signal sources: `sine` (single-tone), `square` (harmonic-rich), `audio` (WAV speech/music loop), `prbs` (pseudo-random bit sequences), and `noise` (Gaussian noise).
 - **PRD-SIM-2 (Modulation Schemes)**: Modulate input sources into analog and digital schemes:
-  - Digital Constellations: `BPSK`, `QPSK`, `8PSK`, `16QAM`, `64QAM`, `256QAM`.
+  - Digital Single-Carrier Constellations: `BPSK`, `QPSK`, `8PSK`, `16QAM`, `64QAM`, `256QAM`.
   - Continuous Phase / Analog: `FM` (quadrature frequency modulation), `AM` (DSB/SSB amplitude modulation), `GFSK`, `BFSK`.
+  - Multicarrier Schemes: `OFDM` (Orthogonal Frequency Division Multiplexing) and `SC-FDMA` (Single Carrier Frequency Division Multiple Access with $M$-point DFT precoding).
 - **PRD-SIM-3 (Impairment Pipeline)**: Apply chainable physical channel impairments via native GNU Radio blocks:
   - Additive White Gaussian Noise (AWGN) specified in `snr_db` ($0\text{ to }30\text{ dB}$).
   - Carrier Frequency Offset (`cfo_hz`) & Doppler phase rotation.
@@ -74,7 +75,7 @@ The DSP library provides decoupled, reusable modules for inspecting and processi
 - **PRD-DSP-3 (Signal Cleanup & Filtering)**:
   - Remove DC bias via `filter.dc_blocker_cc`, apply Gram-Schmidt I/Q imbalance compensation, and perform lowpass FIR filtering (`filter.fir_filter_ccc`).
 - **PRD-DSP-4 (Automatic Modulation Classification)**:
-  - Calculate Higher-Order Cumulants ($C_{20}, C_{21}, C_{40}, C_{42}$) and constellation statistics (phase variance, amplitude kurtosis) to classify modulations (`FM`, `AM`, `BPSK`, `QPSK`, `8PSK`, `16QAM`, `64QAM`, `256QAM`, `GFSK`).
+  - Calculate Higher-Order Cumulants ($C_{20}, C_{21}, C_{40}, C_{42}$) and constellation statistics (phase variance, amplitude kurtosis) to classify modulations (`FM`, `AM`, `BPSK`, `QPSK`, `8PSK`, `16QAM`, `64QAM`, `256QAM`, `GFSK`, `OFDM`, `SC-FDMA`).
   - Squelch low SNR noise ($SNR < 1.5\text{ dB}$) to prevent false positive classifications on noise.
 - **PRD-DSP-5 (Carrier & Clock Synchronization)**:
   - Perform Carrier Frequency Offset (CFO) recovery, Costas Loop phase locking (`digital.costas_loop_cc`), and Gardner symbol clock timing synchronization (`digital.symbol_sync_cc`).
@@ -100,6 +101,9 @@ The test suite validates DSP algorithms and agent skills against real-world rece
   - Verify FIR filter transition band masks and uniform phase rotation CFO artifacts.
 - **PRD-TEST-3 (Progressive Impairment Skill Verification Suite)**:
   - Run end-to-end benchmark suite across progressive SNR drops ($30\text{ dB} \to 0\text{ dB}$), CFO sweeps, and multipath channels to verify agent skill pass rates.
+- **PRD-TEST-4 (Multicarrier Benchmark & Sub-Parameter Sweep Suite)**:
+  - Perform sub-parameter sweeps over subcarrier spacing ($\Delta f$), subcarrier bandwidth ($N_{\text{used}}$), cyclic prefix ratios ($CP/N_{\text{fft}}$), and SC-FDMA DFT precoding PAPR reduction under configurable impairment profiles (`examples/multicarrier_benchmark_suite.py` & `tests/test_multicarrier.py`).
+  - Modular runner design supports looping across progressively worse channel models.
 
 ---
 

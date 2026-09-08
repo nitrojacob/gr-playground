@@ -68,8 +68,10 @@ gr-playground/
 │   ├── test_dsp.py               # Spectrum analysis & AMC unit tests
 │   ├── test_simulator.py         # Channel simulator unit tests
 │   ├── test_dsp_flaws_and_fixes.py # Edge-case regression tests
+│   ├── test_multicarrier.py      # OFDM & SC-FDMA parameter sweep tests
 │   └── test_skill_verification.py   # Impairment benchmark suite
 ├── examples/                     # Verification Benchmark Suite & Sample Audio
+│   ├── multicarrier_benchmark_suite.py # Multicarrier parameter sweeps & report runner
 │   ├── skill_verification_suite.py # Progressive impairment benchmark runner
 │   └── audio/                    # Speech audio samples for modulation
 ├── grc/                          # GRC Flowgraphs
@@ -147,6 +149,7 @@ tests/
 ├── test_wideband.py                       ──> Scanning, DDC extraction, in-skill GRC validator test
 ├── test_dsp.py                            ──> Welch PSD, DC removal, AGC, AMC cumulants
 ├── test_simulator.py                      ──> Channel simulator flowgraph & SigMF I/O
+├── test_multicarrier.py                   ──> OFDM & SC-FDMA parameter sweeps (spacing, BW, CP, PAPR)
 └── test_skill_verification.py              ──> Progressive impairment benchmark runner
 ```
 

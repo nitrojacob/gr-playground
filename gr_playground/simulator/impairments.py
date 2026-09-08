@@ -36,18 +36,63 @@ class GRImpairments:
     @staticmethod
     def dc_offset_and_iq_imbalance(dc_i=0.0, dc_q=0.0, mag_imbalance_db=0.0, phase_imbalance_deg=0.0):
         """
-        Injects DC Offset and I/Q Amplitude/Phase Imbalance using native GNU Radio add/multiply blocks.
+        Injects DC Offset using native GNU Radio add_const_cc block.
         """
         dc_const = complex(dc_i, dc_q)
-        dc_adder = blocks.add_const_cc(dc_const)
+        return blocks.add_const_cc(dc_const)
 
-        # Gain and Phase imbalance matrix transformation
-        # I_out = I_in * (1 + alpha)
-        # Q_out = Q_in * (1 - alpha) * cos(phi) + I_in * sin(phi)
+    @staticmethod
+    def iq_imbalance(samples, mag_imbalance_db=0.0, phase_imbalance_deg=0.0):
+        """
+        Applies Quadrature I/Q Gain and Phase Imbalance matrix transformation:
+        I_out = (1 + alpha) * I_in
+        Q_out = (1 - alpha) * Q_in * cos(phi) + I_in * sin(phi)
+        """
+        if mag_imbalance_db == 0.0 and phase_imbalance_deg == 0.0:
+            return samples
+            
         alpha = 10.0 ** (mag_imbalance_db / 20.0) - 1.0
         phi = np.radians(phase_imbalance_deg)
         
-        return dc_adder
+        i_in = samples.real
+        q_in = samples.imag
+        
+        i_out = (1.0 + alpha) * i_in
+        q_out = (1.0 - alpha) * q_in * np.cos(phi) + i_in * np.sin(phi)
+        
+        return (i_out + 1j * q_out).astype(np.complex64)
+
+    @staticmethod
+    def phase_noise(samples, phase_noise_std_rad=0.01, seed=42):
+        """
+        Simulates Wiener process Local Oscillator (LO) Phase Noise / Jitter:
+        phi[n] = phi[n-1] + N(0, sigma^2)
+        """
+        if phase_noise_std_rad <= 0.0:
+            return samples
+            
+        rng = np.random.RandomState(seed)
+        dphi = rng.normal(0.0, phase_noise_std_rad, size=len(samples))
+        phi = np.cumsum(dphi)
+        return (samples * np.exp(1j * phi)).astype(np.complex64)
+
+    @staticmethod
+    def hpa_saturation(samples, ibo_db=3.0, p=2.0):
+        """
+        Simulates Solid-State High Power Amplifier (HPA) non-linear saturation via the Rapp Model:
+        y = x / (1 + (|x| / V_sat)^(2p))^(1 / (2p))
+        Evaluates out-of-band spectral regrowth and PAPR degradation in OFDM/SC-FDMA.
+        """
+        if ibo_db is None:
+            return samples
+            
+        p_avg = np.mean(np.abs(samples)**2)
+        v_sat = np.sqrt(p_avg) * (10.0 ** (ibo_db / 20.0))
+        
+        mag = np.abs(samples) + 1e-12
+        gain_scale = 1.0 / ((1.0 + (mag / v_sat)**(2.0 * p)) ** (1.0 / (2.0 * p)))
+        
+        return (samples * gain_scale).astype(np.complex64)
 
     @staticmethod
     def jammer_interference(sample_rate=32000, jammer_freq_hz=2000.0, jammer_power_db=-10.0):
@@ -58,3 +103,5 @@ class GRImpairments:
         jammer_source = analog.sig_source_c(sample_rate, analog.GR_COS_WAVE, jammer_freq_hz, amplitude, 0.0)
         adder = blocks.add_cc()
         return jammer_source, adder
+
+

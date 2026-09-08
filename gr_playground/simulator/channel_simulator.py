@@ -27,8 +27,11 @@ class ChannelSimulatorFlowgraph(gr.top_block):
                  dc_offset=(0.0, 0.0),
                  mag_imbalance_db=0.0,
                  phase_imbalance_deg=0.0,
+                 phase_noise_std=0.0,
+                 hpa_ibo_db=None,
                  multipath_taps=None,
                  jammer_power_db=None,
+                 ofdm_params=None,
                  output_filepath=None):
         
         super(ChannelSimulatorFlowgraph, self).__init__("ChannelSimulatorFlowgraph")
@@ -41,6 +44,10 @@ class ChannelSimulatorFlowgraph(gr.top_block):
         self.cfo_hz = float(cfo_hz)
         self.phase_offset_deg = float(phase_offset_deg)
         self.sro_ppm = float(sro_ppm)
+        self.mag_imbalance_db = float(mag_imbalance_db)
+        self.phase_imbalance_deg = float(phase_imbalance_deg)
+        self.phase_noise_std = float(phase_noise_std)
+        self.hpa_ibo_db = float(hpa_ibo_db) if hpa_ibo_db is not None else None
 
         # 1. Instantiate Signal Source
         if self.source_type == "sine":
@@ -148,6 +155,25 @@ class ChannelSimulatorFlowgraph(gr.top_block):
             self.connect(b_in, self.mod_block)
             tx_out = self.mod_block
 
+        elif self.mod_type in ["OFDM", "SC-FDMA", "SC_FDMA"]:
+            params = ofdm_params or {}
+            n_fft = params.get("n_fft", 64)
+            n_used = params.get("n_used", 48)
+            cp_len = params.get("cp_len", 16)
+            subcarrier_mod = params.get("subcarrier_mod", "QPSK")
+            is_sc_fdma = (self.mod_type in ["SC-FDMA", "SC_FDMA"])
+            
+            mc_samples = GRModulators.generate_multicarrier_samples(
+                num_samples=self.num_samples,
+                n_fft=n_fft,
+                n_used=n_used,
+                cp_len=cp_len,
+                subcarrier_mod=subcarrier_mod,
+                sc_fdma=is_sc_fdma
+            )
+            self.mod_block = blocks.vector_source_c(mc_samples.tolist(), repeat=True)
+            tx_out = self.mod_block
+
         else: # RAW / PASS-THROUGH
             if not is_complex_src:
                 f2c = blocks.float_to_complex()
@@ -190,6 +216,16 @@ class ChannelSimulatorFlowgraph(gr.top_block):
         self.run()
         data = np.array(self.sink_block.data(), dtype=np.complex64)
         
+        # Apply Channel Enhancements (I/Q imbalance, LO phase noise, non-linear HPA saturation)
+        if self.mag_imbalance_db != 0.0 or self.phase_imbalance_deg != 0.0:
+            data = GRImpairments.iq_imbalance(data, self.mag_imbalance_db, self.phase_imbalance_deg)
+            
+        if self.phase_noise_std > 0.0:
+            data = GRImpairments.phase_noise(data, self.phase_noise_std)
+            
+        if self.hpa_ibo_db is not None:
+            data = GRImpairments.hpa_saturation(data, self.hpa_ibo_db)
+        
         if self.output_filepath:
             SigMFWriter.export_dataset(
                 self.output_filepath,
@@ -202,7 +238,7 @@ class ChannelSimulatorFlowgraph(gr.top_block):
                 cfo_hz=self.cfo_hz,
                 phase_offset_deg=self.phase_offset_deg,
                 sro_ppm=self.sro_ppm,
-                iq_imbalance_db=0.0
+                iq_imbalance_db=self.mag_imbalance_db
             )
         
         return data

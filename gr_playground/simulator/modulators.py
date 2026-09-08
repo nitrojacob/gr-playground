@@ -81,3 +81,91 @@ class GRModulators:
             verbose=False,
             log=False
         )
+
+    @staticmethod
+    def generate_multicarrier_samples(
+        num_samples=16384,
+        n_fft=64,
+        n_used=48,
+        cp_len=16,
+        subcarrier_mod="QPSK",
+        sc_fdma=False,
+        seed=42
+    ):
+        """
+        Synthesize multicarrier complex IQ samples (OFDM or SC-FDMA).
+        
+        Parameters:
+        - num_samples: Total number of complex64 IQ samples to generate
+        - n_fft: Total FFT size (e.g. 32, 64, 128, 256, 512)
+        - n_used: Number of active occupied subcarriers (n_used <= n_fft - 2)
+        - cp_len: Cyclic prefix length in samples
+        - subcarrier_mod: Constellation mapping per subcarrier ('BPSK', 'QPSK', '16QAM', '64QAM')
+        - sc_fdma: If True, apply M-point DFT precoding prior to IFFT (SC-FDMA / LTE Uplink)
+        - seed: Random seed for deterministic reproducibility
+        """
+        rng = np.random.RandomState(seed)
+        n_used = min(n_used, n_fft - 2)
+        n_used = (n_used // 2) * 2  # Ensure even count
+        
+        # 1. Construct constellation map
+        mod_upper = subcarrier_mod.upper()
+        if mod_upper == "BPSK":
+            alphabet = np.array([-1.0, 1.0], dtype=np.complex64)
+        elif mod_upper == "QPSK":
+            alphabet = np.array([-1-1j, -1+1j, 1-1j, 1+1j], dtype=np.complex64) / np.sqrt(2.0)
+        elif mod_upper == "16QAM":
+            pts = []
+            for i in [-3, -1, 1, 3]:
+                for q in [-3, -1, 1, 3]:
+                    pts.append(complex(i, q))
+            alphabet = np.array(pts, dtype=np.complex64) / np.sqrt(10.0)
+        elif mod_upper == "64QAM":
+            pts = []
+            for i in [-7, -5, -3, -1, 1, 3, 5, 7]:
+                for q in [-7, -5, -3, -1, 1, 3, 5, 7]:
+                    pts.append(complex(i, q))
+            alphabet = np.array(pts, dtype=np.complex64) / np.sqrt(42.0)
+        else:
+            alphabet = np.array([-1-1j, -1+1j, 1-1j, 1+1j], dtype=np.complex64) / np.sqrt(2.0)
+
+        samples_per_symbol = n_fft + cp_len
+        num_symbols_needed = int(np.ceil(num_samples / samples_per_symbol)) + 2
+        
+        half_used = n_used // 2
+        
+        # Active subcarrier indices in shifted spectrum [-n_fft//2 ... n_fft//2 - 1]
+        left_subcarriers = np.arange(-half_used, 0)
+        right_subcarriers = np.arange(1, half_used + 1)
+        active_indices_shifted = np.concatenate([left_subcarriers, right_subcarriers])
+        # Convert shifted indices to standard FFT bin indices [0 ... n_fft - 1]
+        active_indices_fft = (active_indices_shifted + n_fft) % n_fft
+
+        symbol_blocks = []
+        for _ in range(num_symbols_needed):
+            # Pick random constellation symbols for active subcarriers
+            symbol_indices = rng.randint(0, len(alphabet), size=n_used)
+            symbols = alphabet[symbol_indices]
+            
+            if sc_fdma:
+                # SC-FDMA: Apply normalized M-point DFT precoding to symbol vector
+                precoded = np.fft.fft(symbols) / np.sqrt(n_used)
+                subcarrier_vals = precoded
+            else:
+                subcarrier_vals = symbols
+
+            # Map symbols into FFT frequency buffer
+            X = np.zeros(n_fft, dtype=np.complex64)
+            X[active_indices_fft] = subcarrier_vals
+
+            # IFFT transformation to time domain (normalized power)
+            x_time = np.fft.ifft(X) * np.sqrt(n_fft)
+
+            # Prepend Cyclic Prefix
+            cp = x_time[-cp_len:]
+            x_symbol = np.concatenate([cp, x_time])
+            symbol_blocks.append(x_symbol)
+
+        full_stream = np.concatenate(symbol_blocks).astype(np.complex64)
+        return full_stream[:num_samples]
+

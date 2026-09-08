@@ -70,6 +70,7 @@ gr-playground/
 │           └── localize_and_extract.py
 ├── examples/                  # Audio generators & skill verification benchmark suite
 │   ├── audio/
+│   ├── multicarrier_benchmark_suite.py
 │   └── skill_verification_suite.py
 ├── grc/                       # Unified GNU Radio Companion (.grc) frontend flowgraph
 │   └── rtlsdr_wideband_frontend.grc
@@ -77,6 +78,7 @@ gr-playground/
     ├── test_ask_modulation.py
     ├── test_dsp.py
     ├── test_dsp_flaws_and_fixes.py
+    ├── test_multicarrier.py
     ├── test_realworld_receiver_impairments.py
     ├── test_simulator.py
     ├── test_skill_verification.py
