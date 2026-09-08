@@ -21,7 +21,7 @@ The **Playground** is built entirely on native GNU Radio blocks (`gnuradio.analo
         ▼                                  ▼                                  ▼
 +-----------------------+      +-----------------------+      +-----------------------+
 |  Pillar I: Simulator  |      | Pillar II: DSP Library|      | Pillar III: Testcases |
-| (gr_playground.sim)   |      | (gr_playground.dsp)   |      | (tests/ & examples/)  |
+| (gr_playground.sim)   |      | (gr_playground.dsp)   |      | (tests/)              |
 +-----------------------+      +-----------------------+      +-----------------------+
 | • Signal Sources      |      | • Spectrum Analysis   |      | • Real-World Receiver |
 | • Modulators (Analog/ |      | • Wideband DDC        |      |   Impairments (5dB    |
@@ -69,7 +69,7 @@ The DSP library provides decoupled, reusable modules for inspecting and processi
 - **PRD-DSP-1 (Wideband Spectrum Scanning & DDC Channelizer)**:
   - Scan wideband spectrum captures ($2.4+\text{ MSPS}$) using Temporal Ensemble Welch PSD (`nperseg=32768`, $+9\text{ dB}$ processing gain).
   - Estimate adaptive rolling noise floor ($200\text{ kHz}$ median window) and local SNR prominence ($SNR_{\text{local}} = PSD_{\text{dB}} - NoiseFloor_{\text{dB}}$) to discover active sub-channels while rejecting $0\text{ Hz}$ LO leakage spikes.
-  - Isolate sub-channels using native `filter.freq_xlating_fir_filter_ccc` (DDC), lowpass filter, decimate, AGC normalize, and export to SigMF.
+  - Isolate sub-channels using high-performance unified chunked FIR DDC (`gr_playground.dsp.channelizer.extract_channel_flowgraph` / `extract_channel`), lowpass filter, decimate, AGC normalize, and export to SigMF.
 - **PRD-DSP-2 (Spectrum Analysis & SNR Metrics)**:
   - Compute Welch Power Spectral Density (PSD), peak tone frequencies, occupied bandwidth (99% power), DC offset level, and overall SNR via M2M4 ratio.
 - **PRD-DSP-3 (Signal Cleanup & Filtering)**:
@@ -88,7 +88,7 @@ The DSP library provides decoupled, reusable modules for inspecting and processi
   - Generate executable standalone GNU Radio Python top_block scripts (`gr.top_block`).
   - Include in-skill GRC YAML schema and block presence validation (`FlowgraphBuilder.validate_grc_flowgraph` / `build_gnuradio_flowgraph.py --validate_grc`) to programmatically verify that $0$ dummy or missing blocks exist upon creating or editing flowgraphs.
 
-### 4.3. Pillar III: The Testcases & Benchmark Suite (`tests/` & `examples/`)
+### 4.3. Pillar III: The Testcases & Benchmark Suite (`tests/`)
 
 The test suite validates DSP algorithms and agent skills against real-world receiver non-idealities.
 
@@ -102,7 +102,7 @@ The test suite validates DSP algorithms and agent skills against real-world rece
 - **PRD-TEST-3 (Progressive Impairment Skill Verification Suite)**:
   - Run end-to-end benchmark suite across progressive SNR drops ($30\text{ dB} \to 0\text{ dB}$), CFO sweeps, and multipath channels to verify agent skill pass rates.
 - **PRD-TEST-4 (Multicarrier Benchmark & Sub-Parameter Sweep Suite)**:
-  - Perform sub-parameter sweeps over subcarrier spacing ($\Delta f$), subcarrier bandwidth ($N_{\text{used}}$), cyclic prefix ratios ($CP/N_{\text{fft}}$), and SC-FDMA DFT precoding PAPR reduction under configurable impairment profiles (`examples/multicarrier_benchmark_suite.py` & `tests/test_multicarrier.py`).
+  - Perform sub-parameter sweeps over subcarrier spacing ($\Delta f$), subcarrier bandwidth ($N_{\text{used}}$), cyclic prefix ratios ($CP/N_{\text{fft}}$), and SC-FDMA DFT precoding PAPR reduction under configurable impairment profiles (`tests/benchmarks/multicarrier_benchmark_suite.py` & `tests/test_multicarrier.py`).
   - Modular runner design supports looping across progressively worse channel models.
 
 ---

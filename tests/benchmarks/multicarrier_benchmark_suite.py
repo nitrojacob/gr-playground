@@ -10,7 +10,7 @@ import json
 import numpy as np
 
 # Ensure repository root is on sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from gr_playground.simulator.channel_simulator import ChannelSimulatorFlowgraph
 from gr_playground.dsp.spectrum import analyze_spectrum

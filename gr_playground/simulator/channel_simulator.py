@@ -59,7 +59,7 @@ class ChannelSimulatorFlowgraph(gr.top_block):
         elif self.source_type == "audio":
             if not wav_path or not os.path.exists(wav_path):
                 # Fallback to sample audio path
-                default_audio = os.path.join(os.path.dirname(__file__), "..", "..", "examples", "audio", "speech.wav")
+                default_audio = os.path.join(os.path.dirname(__file__), "..", "..", "tests", "assets", "audio", "speech.wav")
                 wav_path = default_audio if os.path.exists(default_audio) else wav_path
             self.src_block = GRSources.audio_loop_source(wav_path, self.sample_rate)
             is_complex_src = False

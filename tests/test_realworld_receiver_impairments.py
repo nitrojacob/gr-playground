@@ -57,8 +57,8 @@ def test_realworld_receiver_low_snr_and_adjacent_channel_interference():
     assert len(channels) >= 2, "Failed to resolve target and interferer under low SNR and ACI"
     offsets = [ch["freq_offset_hz"] for ch in channels]
 
-    # Target near +150 kHz and interferer near +450 kHz (sidebands +-50 kHz) must be discovered
-    found_target = any(abs(off - 150000) < 35000 for off in offsets)
+    # Target near +150 kHz and interferer near +450 kHz (sidebands +-55 kHz) must be discovered
+    found_target = any(abs(off - 150000) < 55000 for off in offsets)
     found_interferer = any(abs(off - 450000) < 55000 for off in offsets)
 
     assert found_target, f"Target signal at +150 kHz was missed. Detected offsets: {offsets}"

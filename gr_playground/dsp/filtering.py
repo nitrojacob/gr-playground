@@ -48,10 +48,14 @@ class CleanupFlowgraph(gr.top_block):
             last_block = self.dc_blocker
 
         if cutoff_hz and cutoff_hz < sample_rate / 2.0:
-            taps = filter.firdes.low_pass(1.0, sample_rate, cutoff_hz, cutoff_hz * 0.2)
-            self.lpf = filter.fir_filter_ccc(1, taps)
-            self.connect(last_block, self.lpf)
-            last_block = self.lpf
+            safe_cutoff = max(float(cutoff_hz), 100.0)
+            trans_width = max(safe_cutoff * 0.2, 50.0)
+            if safe_cutoff < sample_rate / 2.0:
+                taps = filter.firdes.low_pass(1.0, sample_rate, safe_cutoff, trans_width)
+                self.lpf = filter.fir_filter_ccc(1, taps)
+                self.connect(last_block, self.lpf)
+                last_block = self.lpf
+
 
         if agc_enable:
             self.agc = analog.agc2_cc(1e-3, 1e-2, 1.0, 1.0)

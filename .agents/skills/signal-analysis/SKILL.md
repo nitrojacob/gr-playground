@@ -1,11 +1,11 @@
 ---
 name: signal-analysis
-description: Inspect unknown signal spectrum, detect peak tones, calculate SNR via M2M4, estimate occupied bandwidth, and measure DC offset without looking at raw IQ samples.
+description: Inspect signal spectrum, detect peak tones, calculate SNR via M2M4 and Welch PSD, estimate occupied bandwidth, and measure DC offset level without running end-to-end demodulation.
 ---
 
 # Signal Analysis Skill 📡
 
-Use this skill when you receive a raw or unknown complex64 signal (SigMF file) and need to understand its spectral properties, noise floor, center frequency offset, occupied bandwidth, and peak tone frequencies.
+Use this micro-worker skill when the user asks for targeted spectral metrics and spectrum inspection of a SigMF signal (e.g., *"measure SNR"*, *"calculate occupied bandwidth"*, *"inspect Welch PSD noise floor"*, or *"list spectral peak tones"*). Do NOT use this skill for end-to-end multi-stage pipeline analysis (use `analyze-rf-signal` instead).
 
 ## Critical Constraint
 **DO NOT ATTEMPT TO VIEW OR READ RAW COMPLEX IQ DATA SAMPLES.** Always process signals using the `analyze_signal.py` script provided in this skill.

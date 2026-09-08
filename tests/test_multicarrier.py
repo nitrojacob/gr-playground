@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from examples.multicarrier_benchmark_suite import (
+from tests.benchmarks.multicarrier_benchmark_suite import (
     run_multicarrier_benchmark_suite,
     run_progressive_multicarrier_benchmark,
     PROGRESSIVE_IMPAIRMENT_LEVELS

@@ -16,7 +16,7 @@ import os
 import shutil
 import numpy as np
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from gr_playground.simulator.channel_simulator import ChannelSimulatorFlowgraph
 from gr_playground.dsp.spectrum import analyze_spectrum
@@ -25,7 +25,7 @@ from gr_playground.dsp.modulation_id import classify_modulation
 from gr_playground.dsp.synchronization import synchronize_signal_flowgraph
 from gr_playground.dsp.demodulation import demodulate_signal_flowgraph
 from gr_playground.dsp.flowgraph_builder import FlowgraphBuilder
-from examples.multicarrier_benchmark_suite import run_progressive_multicarrier_benchmark
+from tests.benchmarks.multicarrier_benchmark_suite import run_progressive_multicarrier_benchmark
 
 IMPAIRMENT_TIERS = {
     "Tier 1 (Clean)": {"snr_db": 30.0, "cfo_hz": 50.0, "dc_offset": (0.0, 0.0), "phase_offset_deg": 0.0},

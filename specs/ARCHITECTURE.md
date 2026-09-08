@@ -5,12 +5,16 @@
 `gr-playground` is designed around three tightly integrated pillars:
 1. **The Signal & Channel Simulator** (`gr_playground.simulator`)
 2. **The Modular DSP & Utilities Library** (`gr_playground.dsp` & `gr_playground.utils`)
-3. **The Testcases & Benchmark Suite** (`tests/` & `examples/`)
+3. **The Testcases & Benchmark Suite** (`tests/`): Evaluates DSP algorithms and agent skills against realistic real-world receiver non-idealities across 33 automated test cases.
 
 ```
-+---------------------------------------------------------------------------------------+
-|                                    gr-playground                                      |
-+---------------------------------------------------------------------------------------+
++-----------------------+     +-----------------------+     +--------------------------+
+|  Signal Simulator     |     |  Modular DSP Core     |     |  Testcases & Benchmarks  |
+| (gr_playground.sim)   | --> | (gr_playground.dsp)   | --> | (tests/)                 |
+| - Channel Impairments |     | - AMC & Cumulants     |     | - Pytest Suite           |
+| - Source Synthesizer  |     | - DDC & Sync          |     | - Skill Benchmarks       |
++-----------------------+     +-----------------------+     +--------------------------+
+```
                                            │
          ┌─────────────────────────────────┼─────────────────────────────────┐
          │                                 │                                 │
@@ -63,6 +67,10 @@ gr-playground/
 │       ├── sigmf_io.py           # SigMF & raw .cu8 fallback auto-detector
 │       └── summary.py            # Formatted Markdown report formatters
 ├── tests/                        # PILLAR III: Automated Testcases & Benchmark Suite
+│   ├── assets/audio/             # Speech audio reference generators & samples
+│   ├── benchmarks/               # Verification Benchmark Suite
+│   │   ├── multicarrier_benchmark_suite.py # Multicarrier parameter sweeps & report runner
+│   │   └── skill_verification_suite.py # Progressive impairment benchmark runner
 │   ├── test_realworld_receiver_impairments.py # Low SNR, ACI, multipath, ADC clip
 │   ├── test_wideband.py          # Scanning, DDC, & flowgraph builder unit tests
 │   ├── test_dsp.py               # Spectrum analysis & AMC unit tests
@@ -70,10 +78,6 @@ gr-playground/
 │   ├── test_dsp_flaws_and_fixes.py # Edge-case regression tests
 │   ├── test_multicarrier.py      # OFDM & SC-FDMA parameter sweep tests
 │   └── test_skill_verification.py   # Impairment benchmark suite
-├── examples/                     # Verification Benchmark Suite & Sample Audio
-│   ├── multicarrier_benchmark_suite.py # Multicarrier parameter sweeps & report runner
-│   ├── skill_verification_suite.py # Progressive impairment benchmark runner
-│   └── audio/                    # Speech audio samples for modulation
 ├── grc/                          # GRC Flowgraphs
 │   └── rtlsdr_wideband_frontend.grc # Live hardware & wideband DDC GUI
 └── specs/                        # Specifications Directory
@@ -115,7 +119,7 @@ The DSP library provides decoupled Python processing engines:
   N_{\text{floor}}(f) = \text{median}_{f - 100\text{kHz}}^{f + 100\text{kHz}} \left( \text{PSD}_{\text{dB}}(f) \right)
   \]
 - **Local SNR Prominence**: Identifies active channels where $SNR_{\text{local}}(f) = \text{PSD}_{\text{dB}}(f) - N_{\text{floor}}(f) > \text{Threshold}$, filtering out LO $0\text{ Hz}$ DC spikes.
-- **Digital Downconversion (DDC)**: Translates target channels to $0\text{ Hz}$ baseband via native `filter.freq_xlating_fir_filter_ccc`, lowpass filters, decimates, AGC normalizes, and exports to SigMF.
+- **Digital Downconversion (DDC)**: High-performance unified chunked FIR DDC engine (`gr_playground.dsp.channelizer.extract_channel_flowgraph` / `extract_channel`) with chunked frequency translation for large wideband captures (>1M samples) to avoid memory overhead, with GNU Radio `ChannelizerFlowgraph` fallback for small datasets. Translates target channels to $0\text{ Hz}$ baseband, lowpass filters, decimates, AGC normalizes, and exports to SigMF.
 
 #### 2. Automatic Modulation Recognition (`modulation_id.py`)
 Extracts zero-mean normalized Higher-Order Cumulants:
@@ -138,7 +142,7 @@ is_valid, missing, msg = FlowgraphBuilder.validate_grc_flowgraph(grc_path)
 
 ---
 
-### 3.3. Pillar III: The Testcases & Verification Suite (`tests/` & `examples/`)
+### 3.3. Pillar III: The Testcases & Verification Suite (`tests/`)
 
 The test suite validates the entire playground against real-world receiver non-idealities:
 
