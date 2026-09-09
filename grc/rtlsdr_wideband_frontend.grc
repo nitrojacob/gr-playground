@@ -37,12 +37,19 @@ options:
 
 blocks:
 - name: capture_enable
-  id: variable_qtgui_push_button
+  id: variable_qtgui_toggle_button_msg
   parameters:
-    comment: Start/Stop Capture Recording Push Button (Off by default = 0)
+    comment: Start/Stop Capture Recording Toggle Button (Pressed = Recording 1, Released
+      = Stopped 0)
     gui_hint: ''
+    initPressed: 'False'
     label: Start / Stop Capture
+    outputmsgname: value
+    pressBackgroundColor: red
+    pressFontColor: white
     pressed: '1'
+    relBackgroundColor: default
+    relFontColor: default
     released: '0'
     type: int
     value: '0'
@@ -51,6 +58,22 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [540, 12]
+    rotation: 0
+    state: enabled
+- name: capture_status_label
+  id: variable_qtgui_label
+  parameters:
+    comment: Live visual feedback for capture status
+    formatter: None
+    gui_hint: ''
+    label: 'Capture Status:'
+    type: string
+    value: '"RECORDING IN PROGRESS..." if bool(capture_enable) else "CAPTURE STOPPED"'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [928, 16.0]
     rotation: 0
     state: enabled
 - name: center_freq_mhz
@@ -74,6 +97,22 @@ blocks:
     coordinate: [180, 12]
     rotation: 0
     state: enabled
+- name: file_prefix
+  id: variable_qtgui_entry
+  parameters:
+    comment: Capture File Path Prefix (without extension)
+    entry_signal: editingFinished
+    gui_hint: ''
+    label: Capture File Prefix
+    type: string
+    value: /tmp/wideband_raw_capture
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1152, 312.0]
+    rotation: 0
+    state: enabled
 - name: if_gain
   id: variable_qtgui_range
   parameters:
@@ -92,7 +131,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [736, 0.0]
+    coordinate: [1184, 136.0]
     rotation: 0
     state: enabled
 - name: rf_gain
@@ -145,6 +184,97 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [340, 280]
+    rotation: 0
+    state: enabled
+- name: epy_block_sigmf_writer
+  id: epy_block
+  parameters:
+    _source_code: "import pmt\nfrom gnuradio import gr\nimport os, json, datetime,\
+      \ sys, traceback\n\nclass blk(gr.basic_block):\n    def __init__(self, capture_enable=0,\
+      \ center_freq_mhz=100.0, samp_rate=2048000.0, file_prefix='/tmp/wideband_raw_capture'):\n\
+      \        gr.basic_block.__init__(\n            self,\n            name='SigMF\
+      \ Meta Writer',\n            in_sig=[],\n            out_sig=[]\n        )\n\
+      \        self.message_port_register_in(pmt.intern('msg_in'))\n        self.set_msg_handler(pmt.intern('msg_in'),\
+      \ self.handle_msg)\n        self.capture_enable = int(capture_enable)\n    \
+      \    self.center_freq_mhz = float(center_freq_mhz)\n        self.samp_rate =\
+      \ float(samp_rate)\n        self.file_prefix = str(file_prefix)\n        self.start_datetime\
+      \ = None\n        self.log_file = '/tmp/sigmf_meta_writer.log'\n        self._log('SigMF\
+      \ Meta Writer initialized. file_prefix=' + str(self.file_prefix))\n\n    def\
+      \ _log(self, msg_str):\n        timestamp = datetime.datetime.now().strftime('%Y-%m-%d\
+      \ %H:%M:%S')\n        log_line = f'[{timestamp}] {msg_str}\\n'\n        sys.stderr.write('[SigMF\
+      \ Writer] ' + log_line)\n        sys.stderr.flush()\n        try:\n        \
+      \    with open(self.log_file, 'a') as f:\n                f.write(log_line)\n\
+      \        except Exception:\n            pass\n\n    def _extract_val(self, msg):\n\
+      \        val = pmt.to_python(msg)\n        if isinstance(val, dict):\n     \
+      \       if 'value' in val:\n                val = val['value']\n           \
+      \ elif val:\n                val = list(val.values())[0]\n        elif isinstance(val,\
+      \ (tuple, list)):\n            val = val[-1]\n        if isinstance(val, bool):\n\
+      \            return 1 if val else 0\n        return int(val)\n\n    def handle_msg(self,\
+      \ msg):\n        try:\n            val = self._extract_val(msg)\n          \
+      \  self._log(f'handle_msg received PMT msg value: {val} (current capture_enable={self.capture_enable})')\n\
+      \            if val == 1:\n                self.start_datetime = datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00',\
+      \ 'Z')\n                self._log(f'Capture STARTED (msg). Recorded start_datetime:\
+      \ {self.start_datetime}')\n            elif val == 0:\n                self._log('Capture\
+      \ STOPPED (msg). Triggering write_meta_file()...')\n                self.write_meta_file()\n\
+      \            self.capture_enable = val\n        except Exception as e:\n   \
+      \         err_msg = f'ERROR in handle_msg: {e}\\n{traceback.format_exc()}'\n\
+      \            self._log(err_msg)\n\n    def set_capture_enable(self, capture_enable):\n\
+      \        try:\n            val = int(capture_enable)\n            self._log(f'set_capture_enable\
+      \ called with val: {val} (current capture_enable={self.capture_enable})')\n\
+      \            if val == 1:\n                self.start_datetime = datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00',\
+      \ 'Z')\n                self._log(f'Capture STARTED (setter). Recorded start_datetime:\
+      \ {self.start_datetime}')\n            elif val == 0:\n                self._log('Capture\
+      \ STOPPED (setter). Triggering write_meta_file()...')\n                self.write_meta_file()\n\
+      \            self.capture_enable = val\n        except Exception as e:\n   \
+      \         err_msg = f'ERROR in set_capture_enable: {e}\\n{traceback.format_exc()}'\n\
+      \            self._log(err_msg)\n\n    def set_center_freq_mhz(self, center_freq_mhz):\n\
+      \        self.center_freq_mhz = float(center_freq_mhz)\n        self._log(f'Center\
+      \ frequency updated: {self.center_freq_mhz} MHz')\n\n    def set_samp_rate(self,\
+      \ samp_rate):\n        self.samp_rate = float(samp_rate)\n        self._log(f'Sample\
+      \ rate updated: {self.samp_rate} Hz')\n\n    def set_file_prefix(self, file_prefix):\n\
+      \        self.file_prefix = str(file_prefix)\n        self._log(f'File prefix\
+      \ updated: {self.file_prefix}')\n\n    def write_meta_file(self):\n        try:\n\
+      \            if not self.start_datetime:\n                self.start_datetime\
+      \ = datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00',\
+      \ 'Z')\n            data_path = self.file_prefix + '.sigmf-data'\n         \
+      \   meta_path = self.file_prefix + '.sigmf-meta'\n            sample_count =\
+      \ 0\n            if os.path.exists(data_path):\n                sample_count\
+      \ = os.path.getsize(data_path) // 8\n            meta_data = {\n           \
+      \     'global': {\n                    'core:datatype': 'cf32_le',\n       \
+      \             'core:sample_rate': float(self.samp_rate),\n                 \
+      \   'core:version': '1.0.0',\n                    'core:description': 'Live\
+      \ RTL-SDR RF pure wideband raw capture',\n                    'core:author':\
+      \ 'gr-playground rtlsdr_wideband_frontend'\n                },\n           \
+      \     'captures': [\n                    {\n                        'core:sample_start':\
+      \ 0,\n                        'core:sample_count': int(sample_count),\n    \
+      \                    'core:frequency': float(self.center_freq_mhz * 1e6),\n\
+      \                        'core:datetime': self.start_datetime\n            \
+      \        }\n                ],\n                'annotations': []\n        \
+      \    }\n            target_dir = os.path.dirname(os.path.abspath(meta_path))\n\
+      \            os.makedirs(target_dir, exist_ok=True)\n            with open(meta_path,\
+      \ 'w') as f:\n                json.dump(meta_data, f, indent=2)\n          \
+      \  self._log(f'SUCCESSFULLY WROTE SigMF Metadata -> {meta_path} (Samples: {sample_count:,},\
+      \ Start: {self.start_datetime})')\n        except Exception as e:\n        \
+      \    err_msg = f'ERROR in write_meta_file: {e}\\n{traceback.format_exc()}'\n\
+      \            self._log(err_msg)\n"
+    affinity: ''
+    alias: ''
+    capture_enable: capture_enable
+    center_freq_mhz: center_freq_mhz
+    comment: Embedded Python Block triggered directly by Toggle Button message output
+    file_prefix: file_prefix
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    samp_rate: samp_rate
+  states:
+    _io_cache: ('SigMF Meta Writer', 'blk', [('capture_enable', '0'), ('center_freq_mhz',
+      '100.0'), ('samp_rate', '2048000.0'), ('file_prefix', "'/tmp/wideband_raw_capture'")],
+      [('msg_in', 'message', 1)], [], '', ['capture_enable', 'center_freq_mhz', 'file_prefix',
+      'samp_rate'])
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [880, 600.0]
     rotation: 0
     state: enabled
 - name: qtgui_sink_x_0
@@ -530,7 +660,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [40, 200]
+    coordinate: [16, 348.0]
     rotation: 0
     state: enabled
 - name: wideband_file_sink
@@ -540,7 +670,7 @@ blocks:
     alias: ''
     append: 'False'
     comment: Pure Wideband Spectrum File Sink (2.4 MSps Raw SigMF Data)
-    file: /tmp/wideband_raw_capture.sigmf-data
+    file: file_prefix + '.sigmf-data'
     type: complex
     unbuffered: 'False'
     vlen: '1'
@@ -554,6 +684,7 @@ blocks:
 
 connections:
 - [blocks_copy_0, '0', wideband_file_sink, '0']
+- [capture_enable, state, epy_block_sigmf_writer, msg_in]
 - [rtlsdr_source, '0', blocks_copy_0, '0']
 - [rtlsdr_source, '0', qtgui_sink_x_0, '0']
 
