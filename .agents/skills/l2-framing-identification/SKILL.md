@@ -11,7 +11,7 @@ Use this skill when you need to inspect demodulated bit or byte payloads, identi
 
 1. **Execute Framing Identification CLI Tool**:
    ```bash
-   PYTHONPATH=/usr/lib/python3/dist-packages:. python3 .agents/skills/l2-framing-identification/scripts/identify_l2_framing.py --input /tmp/demodulated_bits.bin
+   PYTHONPATH=/usr/lib/python3/dist-packages:. .agents/skills/l2-framing-identification/scripts/identify_l2_framing.py --input /tmp/demodulated_bits.bin
    ```
 2. **Programmatic Usage**:
    ```python

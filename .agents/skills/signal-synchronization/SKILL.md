@@ -11,7 +11,7 @@ Use this skill to align carrier frequency, lock carrier phase, and sync symbol t
 
 1. **Execute Synchronization Tool**:
    ```bash
-   PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/signal-synchronization/scripts/synchronize_signal.py --input <cleaned_sigmf_file> --mod <QPSK|BPSK|16QAM> --output <synced_sigmf_file>
+   PYTHONPATH=/usr/lib/python3/dist-packages:./ .agents/skills/signal-synchronization/scripts/synchronize_signal.py --input <cleaned_sigmf_file> --mod <QPSK|BPSK|16QAM> --output <synced_sigmf_file>
    ```
 
 2. **Native GNU Radio Blocks Employed**:

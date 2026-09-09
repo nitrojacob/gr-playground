@@ -45,7 +45,7 @@ Activate this skill whenever the user asks to:
 ### Stage 1: Wideband Spectrum Scanning & Channel Discovery
 Scan the wideband spectrum to detect and list active signal channel peaks:
 ```bash
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/analyze-rf-signal/scripts/analyze_rf_pipeline.py \
+PYTHONPATH=/usr/lib/python3/dist-packages:./ .agents/skills/analyze-rf-signal/scripts/analyze_rf_pipeline.py \
   --input <path_to_sigmf_file> \
   --scan_only
 ```
@@ -56,7 +56,7 @@ Display candidate channel table (Rank, Frequency Offset, Absolute RF Frequency, 
 ### Stage 3: Target Channel Extraction & Automated DSP Pipeline
 Execute the full DSP analysis chain on the chosen channel:
 ```bash
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/analyze-rf-signal/scripts/analyze_rf_pipeline.py \
+PYTHONPATH=/usr/lib/python3/dist-packages:./ .agents/skills/analyze-rf-signal/scripts/analyze_rf_pipeline.py \
   --input <path_to_sigmf_file> \
   --channel_index <selected_index> \
   --output_dir /tmp
@@ -73,7 +73,7 @@ PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/analyze-rf-s
 ### Stage 4: Executable Top Block Receiver Generation
 Generate standalone GNU Radio Python receiver script (`build-gnuradio-flowgraph` skill):
 ```bash
-PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/build-gnuradio-flowgraph/scripts/build_gnuradio_flowgraph.py \
+PYTHONPATH=/usr/lib/python3/dist-packages:./ .agents/skills/build-gnuradio-flowgraph/scripts/build_gnuradio_flowgraph.py \
   --input /tmp/extracted_channel.sigmf-data \
   --output_script /tmp/receiver_top_block.py
 ```

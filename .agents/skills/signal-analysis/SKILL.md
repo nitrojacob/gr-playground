@@ -15,7 +15,7 @@ Use this micro-worker skill when the user asks for targeted spectral metrics and
 1. **Execute Signal Analysis Tool**:
    Run the skill script via command line:
    ```bash
-   PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/signal-analysis/scripts/analyze_signal.py --input <path_to_sigmf_file>
+   PYTHONPATH=/usr/lib/python3/dist-packages:./ .agents/skills/signal-analysis/scripts/analyze_signal.py --input <path_to_sigmf_file>
    ```
 
 2. **Interpret Report Metrics**:

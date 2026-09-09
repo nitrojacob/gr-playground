@@ -11,7 +11,7 @@ Use this skill to determine the exact modulation scheme of a cleaned IQ signal.
 
 1. **Execute Modulation Classification Tool**:
    ```bash
-   PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/modulation-recognition/scripts/classify_modulation.py --input <cleaned_sigmf_file>
+   PYTHONPATH=/usr/lib/python3/dist-packages:./ .agents/skills/modulation-recognition/scripts/classify_modulation.py --input <cleaned_sigmf_file>
    ```
 
 2. **Features Evaluated**:

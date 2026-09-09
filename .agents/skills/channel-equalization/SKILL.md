@@ -11,7 +11,7 @@ Use this skill when received RF IQ signals suffer from multipath fading, delay s
 
 1. **Execute Channel Equalization CLI Tool**:
    ```bash
-   PYTHONPATH=/usr/lib/python3/dist-packages:. python3 .agents/skills/channel-equalization/scripts/equalize_channel.py --input /tmp/impaired_signal.sigmf-data --algo MMSE --taps "1.0, 0.4+0.2j" --output /tmp/equalized_signal.sigmf-data
+   PYTHONPATH=/usr/lib/python3/dist-packages:. .agents/skills/channel-equalization/scripts/equalize_channel.py --input /tmp/impaired_signal.sigmf-data --algo MMSE --taps "1.0, 0.4+0.2j" --output /tmp/equalized_signal.sigmf-data
    ```
 2. **Programmatic Usage**:
    ```python

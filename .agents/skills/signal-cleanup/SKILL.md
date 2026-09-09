@@ -11,7 +11,7 @@ Use this skill when a signal has DC bias offset, amplitude/phase I/Q imbalance, 
 
 1. **Execute Signal Cleanup Tool**:
    ```bash
-   PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/signal-cleanup/scripts/cleanup_signal.py --input <input_sigmf_file> --output <output_cleaned_file> --cutoff <bandwidth_cutoff_hz>
+   PYTHONPATH=/usr/lib/python3/dist-packages:./ .agents/skills/signal-cleanup/scripts/cleanup_signal.py --input <input_sigmf_file> --output <output_cleaned_file> --cutoff <bandwidth_cutoff_hz>
    ```
 
 2. **DSP Pipeline Applied (Native GNU Radio Blocks)**:

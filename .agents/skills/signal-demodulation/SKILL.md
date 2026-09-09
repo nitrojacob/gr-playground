@@ -11,7 +11,7 @@ Use this skill to extract the underlying payload content (audio or digital data)
 
 1. **Execute Demodulation Tool**:
    ```bash
-   PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/signal-demodulation/scripts/demodulate_signal.py --input <synced_or_cleaned_sigmf_file> --mod <FM|AM|QPSK|BPSK> --audio_out <output_audio.wav>
+   PYTHONPATH=/usr/lib/python3/dist-packages:./ .agents/skills/signal-demodulation/scripts/demodulate_signal.py --input <synced_or_cleaned_sigmf_file> --mod <FM|AM|QPSK|BPSK> --audio_out <output_audio.wav>
    ```
 
 2. **Native GNU Radio Blocks Employed**:

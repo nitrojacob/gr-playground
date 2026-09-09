@@ -11,7 +11,7 @@ Use this skill when demodulated bits require Forward Error Correction (FEC) deco
 
 1. **Execute Channel Decoding CLI Tool**:
    ```bash
-   PYTHONPATH=/usr/lib/python3/dist-packages:. python3 .agents/skills/channel-decoding/scripts/decode_channel_code.py --input /tmp/demodulated_bits.bin --fec CONVOLUTIONAL_K7 --output /tmp/decoded_bits.bin
+   PYTHONPATH=/usr/lib/python3/dist-packages:. .agents/skills/channel-decoding/scripts/decode_channel_code.py --input /tmp/demodulated_bits.bin --fec CONVOLUTIONAL_K7 --output /tmp/decoded_bits.bin
    ```
 2. **Programmatic Usage**:
    ```python

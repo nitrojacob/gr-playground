@@ -11,7 +11,7 @@ Use this skill when continuous or burst RF IQ datasets contain preamble synchron
 
 1. **Execute Preamble Detection CLI Tool**:
    ```bash
-   PYTHONPATH=/usr/lib/python3/dist-packages:. python3 .agents/skills/preamble-detection/scripts/detect_preamble.py --input /tmp/rx_stream.sigmf-data --type BARKER --length 11 --output /tmp/detected_packet.sigmf-data
+   PYTHONPATH=/usr/lib/python3/dist-packages:. .agents/skills/preamble-detection/scripts/detect_preamble.py --input /tmp/rx_stream.sigmf-data --type BARKER --length 11 --output /tmp/detected_packet.sigmf-data
    ```
 2. **Programmatic Usage**:
    ```python

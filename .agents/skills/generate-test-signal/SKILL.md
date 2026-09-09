@@ -11,5 +11,5 @@ Use this skill when you need to generate synthetic signals with configurable sou
 
 1. **Execute Generator Tool**:
    ```bash
-   PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/generate-test-signal/scripts/generate_test_signal.py --source audio --mod FM --snr 20 --cfo 1500 --output /tmp/test_signal/signal.sigmf-data
+   PYTHONPATH=/usr/lib/python3/dist-packages:./ .agents/skills/generate-test-signal/scripts/generate_test_signal.py --source audio --mod FM --snr 20 --cfo 1500 --output /tmp/test_signal/signal.sigmf-data
    ```

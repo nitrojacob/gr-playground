@@ -11,13 +11,13 @@ Use this skill when you need to construct a complete, standalone GNU Radio Pytho
 
 1. **Execute Flowgraph Generator Tool**:
    ```bash
-   PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/build-gnuradio-flowgraph/scripts/build_gnuradio_flowgraph.py --input <input_sigmf_file> --output_script <output_script.py> --ops "dc_block,lowpass_filter,agc,costas_loop,symbol_sync"
+   PYTHONPATH=/usr/lib/python3/dist-packages:./ .agents/skills/build-gnuradio-flowgraph/scripts/build_gnuradio_flowgraph.py --input <input_sigmf_file> --output_script <output_script.py> --ops "dc_block,lowpass_filter,agc,costas_loop,symbol_sync"
    ```
 
 2. **In-Skill GRC Flowgraph Validation**:
    When creating or editing `.grc` flowgraph files, validate the GRC YAML schema and enforce $0$ missing/dummy blocks directly via the skill validator:
    ```bash
-   PYTHONPATH=/usr/lib/python3/dist-packages:./ python3 .agents/skills/build-gnuradio-flowgraph/scripts/build_gnuradio_flowgraph.py --validate_grc <path_to_grc_file>
+   PYTHONPATH=/usr/lib/python3/dist-packages:./ .agents/skills/build-gnuradio-flowgraph/scripts/build_gnuradio_flowgraph.py --validate_grc <path_to_grc_file>
    ```
 
 3. **Generated Python Top Block Architecture**:
@@ -27,7 +27,7 @@ Use this skill when you need to construct a complete, standalone GNU Radio Pytho
 4. **Execute Generated Script**:
    Run the generated GNU Radio top block script directly:
    ```bash
-   PYTHONPATH=/usr/lib/python3/dist-packages python3 <output_script.py> <input_sigmf> <output_iq>
+   PYTHONPATH=/usr/lib/python3/dist-packages <output_script.py> <input_sigmf> <output_iq>
    ```
 
 5. **GRC Schema & RTL-SDR Hardware Reference**:
