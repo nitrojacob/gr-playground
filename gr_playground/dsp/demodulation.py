@@ -43,13 +43,33 @@ def slice_psk_qpsk_bits(samples, mod_type="QPSK"):
     """
     y = np.asarray(samples, dtype=np.complex64)
     bits = []
-    if mod_type.upper() == "BPSK":
+    mod_upper = mod_type.upper()
+    
+    if mod_upper == "BPSK":
         for val in y:
             bits.append(1 if np.real(val) > 0 else 0)
-    else:  # QPSK
+    elif mod_upper in ["ASK", "2ASK", "OOK"]:
+        mag = np.abs(y)
+        thresh = (np.max(mag) + np.min(mag)) / 2.0
+        for m in mag:
+            bits.append(1 if m > thresh else 0)
+    elif mod_upper in ["8PSK"]:
+        for val in y:
+            phase = np.angle(val) % (2 * np.pi)
+            sym = int(np.floor(phase / (np.pi / 4.0))) & 7
+            bits.extend([(sym >> 2) & 1, (sym >> 1) & 1, sym & 1])
+    elif mod_upper in ["16QAM"]:
+        for val in y:
+            i_bit0 = 1 if np.real(val) > 0 else 0
+            i_bit1 = 1 if np.abs(np.real(val)) < 0.5 else 0
+            q_bit0 = 1 if np.imag(val) > 0 else 0
+            q_bit1 = 1 if np.abs(np.imag(val)) < 0.5 else 0
+            bits.extend([i_bit0, i_bit1, q_bit0, q_bit1])
+    else:  # QPSK / Default
         for val in y:
             bits.append(1 if np.real(val) > 0 else 0)
             bits.append(1 if np.imag(val) > 0 else 0)
+            
     return np.array(bits, dtype=np.uint8)
 
 def demodulate_signal_flowgraph(samples, sample_rate=32000, mod_type="QPSK", output_wav_path=None):

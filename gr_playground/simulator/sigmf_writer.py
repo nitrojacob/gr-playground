@@ -6,7 +6,7 @@ from gr_playground.utils.sigmf_io import write_sigmf
 
 class SigMFWriter:
     @staticmethod
-    def export_dataset(filepath, samples, sample_rate, center_freq, source_type, mod_type, snr_db, cfo_hz, phase_offset_deg, sro_ppm, iq_imbalance_db):
+    def export_dataset(filepath, samples, sample_rate=32000, center_freq=0.0, source_type="synthetic", mod_type="QPSK", snr_db=20.0, cfo_hz=0.0, phase_offset_deg=0.0, sro_ppm=0.0, iq_imbalance_db=0.0):
         """
         Exports complex64 dataset and writes SigMF metadata JSON header.
         """

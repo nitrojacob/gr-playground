@@ -32,6 +32,9 @@ class ChannelSimulatorFlowgraph(gr.top_block):
                  multipath_taps=None,
                  jammer_power_db=None,
                  ofdm_params=None,
+                 message_payload=None,
+                 framing_type=None,
+                 fec_type=None,
                  output_filepath=None):
         
         super(ChannelSimulatorFlowgraph, self).__init__("ChannelSimulatorFlowgraph")
@@ -49,6 +52,30 @@ class ChannelSimulatorFlowgraph(gr.top_block):
         self.phase_noise_std = float(phase_noise_std)
         self.hpa_ibo_db = float(hpa_ibo_db) if hpa_ibo_db is not None else None
 
+        # Process Message Payload -> L2 Framing -> Channel Coding (FEC)
+        self.encoded_bytes = None
+        if message_payload is not None or framing_type is not None or fec_type is not None:
+            raw_msg = message_payload if message_payload is not None else b"GR-PLAYGROUND DEFAULT TEST MESSAGE"
+            if isinstance(raw_msg, str):
+                payload_bytes = raw_msg.encode("utf-8")
+            else:
+                payload_bytes = bytes(raw_msg)
+                
+            if framing_type:
+                from gr_playground.simulator.framing import L2FrameEncoder
+                payload_bytes = L2FrameEncoder.encode(payload_bytes, framing_type=framing_type)
+                
+            if fec_type:
+                from gr_playground.simulator.channel_coding import ChannelEncoder
+                encoded_data = ChannelEncoder.encode(payload_bytes, fec_type=fec_type)
+                if isinstance(encoded_data, np.ndarray):
+                    payload_bytes = np.packbits(encoded_data).tobytes()
+                else:
+                    payload_bytes = bytes(encoded_data)
+                    
+            self.encoded_bytes = payload_bytes
+            self.source_type = "encoded_message"
+
         # 1. Instantiate Signal Source
         if self.source_type == "sine":
             self.src_block = GRSources.sine_source(self.sample_rate, tone_freq)
@@ -63,6 +90,9 @@ class ChannelSimulatorFlowgraph(gr.top_block):
                 wav_path = default_audio if os.path.exists(default_audio) else wav_path
             self.src_block = GRSources.audio_loop_source(wav_path, self.sample_rate)
             is_complex_src = False
+        elif self.source_type == "encoded_message":
+            self.src_block = blocks.vector_source_b(list(self.encoded_bytes), repeat=True)
+            is_complex_src = False
         elif self.source_type == "prbs":
             self.src_block = GRSources.prbs_source()
             is_complex_src = False
@@ -76,7 +106,7 @@ class ChannelSimulatorFlowgraph(gr.top_block):
         # 2. Instantiate Modulator Block
         if self.mod_type in ["ASK", "2ASK", "OOK"]:
             if not is_complex_src:
-                if self.source_type == "prbs":
+                if self.source_type in ["prbs", "encoded_message"]:
                     b_in = self.src_block
                 else:
                     f2b = blocks.float_to_uchar()
@@ -98,7 +128,7 @@ class ChannelSimulatorFlowgraph(gr.top_block):
         elif self.mod_type in ["BPSK", "QPSK", "8PSK", "16QAM", "64QAM", "256QAM"]:
             if not is_complex_src:
                 # Convert float/byte source to byte/float for constellation modulator
-                if self.source_type == "prbs":
+                if self.source_type in ["prbs", "encoded_message"]:
                     mod_in = self.src_block
                 else:
                     # Float audio/square source -> convert to byte via thresholding
@@ -140,7 +170,7 @@ class ChannelSimulatorFlowgraph(gr.top_block):
 
         elif self.mod_type in ["GFSK", "BFSK"]:
             if not is_complex_src:
-                if self.source_type == "prbs":
+                if self.source_type in ["prbs", "encoded_message"]:
                     b_in = self.src_block
                 else:
                     f2b = blocks.float_to_uchar()
