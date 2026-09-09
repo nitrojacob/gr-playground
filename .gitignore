@@ -219,3 +219,7 @@ __marimo__/
 
 # Local captures
 cap/
+
+#GRC derived files
+grc/rtlsdr_wideband_frontend.py
+

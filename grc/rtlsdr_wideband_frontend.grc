@@ -1,11 +1,14 @@
 options:
   parameters:
     author: gr-playground agent
+    catch_exceptions: 'True'
     category: '[GRC Hier Blocks]'
     cmake_opt: ''
-    comment: Pure Wideband Live RTL-SDR Capture Frontend with Push Button Recording Control
+    comment: Pure Wideband Live RTL-SDR Capture Frontend with Push Button Recording
+      Control
     copyright: ''
-    description: Live RTL-SDR RF pure wideband raw capture with interactive GUI frequency tuning and Push Button Start/Stop capture controls
+    description: Live RTL-SDR RF pure wideband raw capture with interactive GUI frequency
+      tuning and Push Button Start/Stop capture controls
     gen_cmake: 'On'
     gen_linking: dynamic
     generate_options: qt_gui
@@ -21,7 +24,8 @@ options:
     run_options: prompt
     sizing_mode: fixed
     thread_safe_setters: ''
-    title: Pure Wideband Live RTL-SDR Capture Frontend with Push Button Recording Control
+    title: Pure Wideband Live RTL-SDR Capture Frontend with Push Button Recording
+      Control
     window_size: (1280, 1024)
   states:
     bus_sink: false
@@ -32,50 +36,6 @@ options:
     state: enabled
 
 blocks:
-- name: center_freq
-  id: variable_qtgui_range
-  parameters:
-    comment: Center Frequency Adjustment Slider
-    gui_hint: ''
-    label: Center Frequency (Hz)
-    min_len: '200'
-    orient: QtCore.Qt.Horizontal
-    range_Type: float
-    start: '88000000.0'
-    step: '100000.0'
-    stop: '108000000.0'
-    value: '100000000.0'
-    widget: counter_slider
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [180, 12]
-    rotation: 0
-    state: enabled
-
-- name: rf_gain
-  id: variable_qtgui_range
-  parameters:
-    comment: Hardware RF Gain Slider
-    gui_hint: ''
-    label: RF Tuner Gain (dB)
-    min_len: '200'
-    orient: QtCore.Qt.Horizontal
-    range_Type: float
-    start: '0.0'
-    step: '1.0'
-    stop: '49.6'
-    value: '49.6'
-    widget: counter_slider
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [360, 12]
-    rotation: 0
-    state: enabled
-
 - name: capture_enable
   id: variable_qtgui_push_button
   parameters:
@@ -93,20 +53,129 @@ blocks:
     coordinate: [540, 12]
     rotation: 0
     state: enabled
-
-- name: samp_rate
-  id: variable
+- name: center_freq_mhz
+  id: variable_qtgui_range
   parameters:
-    comment: Wideband Hardware Sampling Rate
-    value: '2400000'
+    comment: Center Frequency Adjustment Slider
+    gui_hint: ''
+    label: Center Frequency (MHz)
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '8.0'
+    step: '1.0'
+    stop: '2000'
+    value: '100.0'
+    widget: counter_slider
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [180, 100]
+    coordinate: [180, 12]
     rotation: 0
     state: enabled
-
+- name: if_gain
+  id: variable_qtgui_range
+  parameters:
+    comment: Hardware RF Gain Slider
+    gui_hint: ''
+    label: IF Gain (dB)
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0.0'
+    step: '1.0'
+    stop: '40'
+    value: '20'
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [736, 0.0]
+    rotation: 0
+    state: enabled
+- name: rf_gain
+  id: variable_qtgui_range
+  parameters:
+    comment: Hardware RF Gain Slider
+    gui_hint: ''
+    label: RF Tuner Gain (dB)
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0.0'
+    step: '1.0'
+    stop: '49.6'
+    value: '20'
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [360, 12]
+    rotation: 0
+    state: enabled
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: Wideband Hardware Sampling Rate
+    value: '2048000'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [16, 136.0]
+    rotation: 0
+    state: enabled
+- name: blocks_copy_0
+  id: blocks_copy
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: Start/Stop Gated Recording Copy Block
+    enabled: bool(capture_enable)
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    showports: 'False'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [340, 280]
+    rotation: 0
+    state: enabled
+- name: qtgui_sink_x_0
+  id: qtgui_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    bw: samp_rate
+    comment: ''
+    fc: center_freq_mhz*1e6
+    fftsize: '1024'
+    gui_hint: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '"Wideband Spectrum (RTL-SDR)"'
+    plotconst: 'True'
+    plotfreq: 'True'
+    plottime: 'True'
+    plotwaterfall: 'True'
+    rate: '10'
+    showports: 'False'
+    showrf: 'True'
+    type: complex
+    wintype: window.WIN_BLACKMAN_hARRIS
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [440, 496.0]
+    rotation: 0
+    state: enabled
 - name: rtlsdr_source
   id: rtlsdr_source
   parameters:
@@ -144,7 +213,7 @@ blocks:
     ant7: ''
     ant8: ''
     ant9: ''
-    args: 'rtl=0'
+    args: rtl=0
     bb_gain0: '20'
     bb_gain1: '20'
     bb_gain10: '20'
@@ -250,7 +319,39 @@ blocks:
     corr7: '0'
     corr8: '0'
     corr9: '0'
-    freq0: center_freq
+    dc_offset_mode0: '0'
+    dc_offset_mode1: '0'
+    dc_offset_mode10: '0'
+    dc_offset_mode11: '0'
+    dc_offset_mode12: '0'
+    dc_offset_mode13: '0'
+    dc_offset_mode14: '0'
+    dc_offset_mode15: '0'
+    dc_offset_mode16: '0'
+    dc_offset_mode17: '0'
+    dc_offset_mode18: '0'
+    dc_offset_mode19: '0'
+    dc_offset_mode2: '0'
+    dc_offset_mode20: '0'
+    dc_offset_mode21: '0'
+    dc_offset_mode22: '0'
+    dc_offset_mode23: '0'
+    dc_offset_mode24: '0'
+    dc_offset_mode25: '0'
+    dc_offset_mode26: '0'
+    dc_offset_mode27: '0'
+    dc_offset_mode28: '0'
+    dc_offset_mode29: '0'
+    dc_offset_mode3: '0'
+    dc_offset_mode30: '0'
+    dc_offset_mode31: '0'
+    dc_offset_mode4: '0'
+    dc_offset_mode5: '0'
+    dc_offset_mode6: '0'
+    dc_offset_mode7: '0'
+    dc_offset_mode8: '0'
+    dc_offset_mode9: '0'
+    freq0: center_freq_mhz*1e6
     freq1: 100e6
     freq10: 100e6
     freq11: 100e6
@@ -346,7 +447,7 @@ blocks:
     gain_mode7: 'False'
     gain_mode8: 'False'
     gain_mode9: 'False'
-    if_gain0: '20'
+    if_gain0: if_gain
     if_gain1: '20'
     if_gain10: '20'
     if_gain11: '20'
@@ -378,6 +479,38 @@ blocks:
     if_gain7: '20'
     if_gain8: '20'
     if_gain9: '20'
+    iq_balance_mode0: '0'
+    iq_balance_mode1: '0'
+    iq_balance_mode10: '0'
+    iq_balance_mode11: '0'
+    iq_balance_mode12: '0'
+    iq_balance_mode13: '0'
+    iq_balance_mode14: '0'
+    iq_balance_mode15: '0'
+    iq_balance_mode16: '0'
+    iq_balance_mode17: '0'
+    iq_balance_mode18: '0'
+    iq_balance_mode19: '0'
+    iq_balance_mode2: '0'
+    iq_balance_mode20: '0'
+    iq_balance_mode21: '0'
+    iq_balance_mode22: '0'
+    iq_balance_mode23: '0'
+    iq_balance_mode24: '0'
+    iq_balance_mode25: '0'
+    iq_balance_mode26: '0'
+    iq_balance_mode27: '0'
+    iq_balance_mode28: '0'
+    iq_balance_mode29: '0'
+    iq_balance_mode3: '0'
+    iq_balance_mode30: '0'
+    iq_balance_mode31: '0'
+    iq_balance_mode4: '0'
+    iq_balance_mode5: '0'
+    iq_balance_mode6: '0'
+    iq_balance_mode7: '0'
+    iq_balance_mode8: '0'
+    iq_balance_mode9: '0'
     maxoutbuf: '0'
     minoutbuf: '0'
     nchan: '1'
@@ -400,105 +533,6 @@ blocks:
     coordinate: [40, 200]
     rotation: 0
     state: enabled
-
-- name: qtgui_freq_sink
-  id: qtgui_freq_sink_x
-  parameters:
-    affinity: ''
-    alias: ''
-    alpha1: '1.0'
-    alpha10: '1.0'
-    alpha2: '1.0'
-    alpha3: '1.0'
-    alpha4: '1.0'
-    alpha5: '1.0'
-    alpha6: '1.0'
-    alpha7: '1.0'
-    alpha8: '1.0'
-    alpha9: '1.0'
-    autoscale: 'False'
-    average: '0.2'
-    color1: '"blue"'
-    color10: '"dark blue"'
-    color2: '"red"'
-    color3: '"green"'
-    color4: '"black"'
-    color5: '"cyan"'
-    color6: '"magenta"'
-    color7: '"yellow"'
-    color8: '"dark red"'
-    color9: '"dark green"'
-    comment: Wideband Spectrum Visualizer
-    ctrlpanel: 'False'
-    fc: center_freq
-    fftsize: '2048'
-    freqhalf: 'True'
-    grid: 'True'
-    gui_hint: ''
-    label: Relative Gain
-    label1: Wideband Spectrum
-    label10: ''
-    label2: ''
-    label3: ''
-    label4: ''
-    label5: ''
-    label6: ''
-    label7: ''
-    label8: ''
-    label9: ''
-    legend: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    name: '"Wideband Spectrum (RTL-SDR)"'
-    nconnections: '1'
-    norm_maxk: '-1'
-    showports: 'False'
-    tr_chan: '0'
-    tr_level: '0.0'
-    tr_mode: qtgui.TRIG_MODE_FREE
-    tr_tag: '""'
-    type: complex
-    units: dB
-    update_time: '0.10'
-    width1: '1'
-    width10: '1'
-    width2: '1'
-    width3: '1'
-    width4: '1'
-    width5: '1'
-    width6: '1'
-    width7: '1'
-    width8: '1'
-    width9: '1'
-    wmax: ''
-    wmin: ''
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [340, 160]
-    rotation: 0
-    state: enabled
-
-- name: blocks_copy_0
-  id: blocks_copy
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: Start/Stop Gated Recording Copy Block
-    enabled: bool(capture_enable)
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    type: complex
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [340, 280]
-    rotation: 0
-    state: enabled
-
 - name: wideband_file_sink
   id: blocks_file_sink
   parameters:
@@ -519,9 +553,10 @@ blocks:
     state: enabled
 
 connections:
-- [rtlsdr_source, '0', qtgui_freq_sink, '0']
-- [rtlsdr_source, '0', blocks_copy_0, '0']
 - [blocks_copy_0, '0', wideband_file_sink, '0']
+- [rtlsdr_source, '0', blocks_copy_0, '0']
+- [rtlsdr_source, '0', qtgui_sink_x_0, '0']
 
 metadata:
   file_format: 1
+  grc_version: 3.10.9.2
