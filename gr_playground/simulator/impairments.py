@@ -44,23 +44,46 @@ class GRImpairments:
     @staticmethod
     def iq_imbalance(samples, mag_imbalance_db=0.0, phase_imbalance_deg=0.0):
         """
-        Applies Quadrature I/Q Gain and Phase Imbalance matrix transformation:
-        I_out = (1 + alpha) * I_in
-        Q_out = (1 - alpha) * Q_in * cos(phi) + I_in * sin(phi)
+        Applies Quadrature I/Q Gain and Phase Imbalance matrix transformation using native GNU Radio top_block flowgraph.
         """
         if mag_imbalance_db == 0.0 and phase_imbalance_deg == 0.0:
             return samples
             
-        alpha = 10.0 ** (mag_imbalance_db / 20.0) - 1.0
-        phi = np.radians(phase_imbalance_deg)
-        
-        i_in = samples.real
-        q_in = samples.imag
-        
-        i_out = (1.0 + alpha) * i_in
-        q_out = (1.0 - alpha) * q_in * np.cos(phi) + i_in * np.sin(phi)
-        
-        return (i_out + 1j * q_out).astype(np.complex64)
+        class IQImbalanceFlowgraph(gr.top_block):
+            def __init__(self, samples_in, mag_db, phase_deg):
+                super().__init__("IQImbalanceFlowgraph")
+                samples_c = np.asarray(samples_in, dtype=np.complex64)
+                alpha = float(10.0 ** (mag_db / 20.0) - 1.0)
+                phi = float(np.radians(phase_deg))
+                
+                g_i = float(1.0 + alpha)
+                g_q = float((1.0 - alpha) * np.cos(phi))
+                sin_phi = float(np.sin(phi))
+
+                self.src = blocks.vector_source_c(samples_c.tolist(), False)
+                self.c2f = blocks.complex_to_float()
+                
+                self.scale_i = blocks.multiply_const_ff(g_i)
+                self.scale_q = blocks.multiply_const_ff(g_q)
+                self.cross_i = blocks.multiply_const_ff(sin_phi)
+                self.add_q = blocks.add_ff()
+                
+                self.f2c = blocks.float_to_complex()
+                self.sink = blocks.vector_sink_c()
+
+                self.connect(self.src, self.c2f)
+                self.connect((self.c2f, 0), self.scale_i, (self.f2c, 0))
+                self.connect((self.c2f, 0), self.cross_i, (self.add_q, 1))
+                self.connect((self.c2f, 1), self.scale_q, (self.add_q, 0))
+                self.connect(self.add_q, (self.f2c, 1))
+                self.connect(self.f2c, self.sink)
+
+            def run_flowgraph(self):
+                self.run()
+                return np.array(self.sink.data(), dtype=np.complex64)
+
+        tb = IQImbalanceFlowgraph(samples, mag_imbalance_db, phase_imbalance_deg)
+        return tb.run_flowgraph()
 
     @staticmethod
     def phase_noise(samples, phase_noise_std_rad=0.01, seed=42):

@@ -46,8 +46,10 @@ def generate_schmidl_cox_preamble(n_fft: int = 64, seed: int = 42) -> np.ndarray
     x_time = np.fft.ifft(X) * np.sqrt(n_fft)
     return x_time.astype(np.complex64)
 
+from gnuradio import gr, blocks, filter, digital
+
 class L1PacketDetector:
-    """Layer-1 IQ Preamble Cross-Correlator and Packet Detector."""
+    """Layer-1 IQ Preamble Cross-Correlator and Packet Detector using GNU Radio FIR filter flowgraphs."""
 
     @staticmethod
     def detect_barker_preamble(
@@ -58,9 +60,7 @@ class L1PacketDetector:
         packet_len_samples: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        Barker Code Matched Filter Cross-Correlator.
-        Computes normalized cross-correlation: R[n] = |sum y[n+k] s*[k]|^2 / (sum|y|^2 sum|s|^2)
-        Returns peak start indices, correlation values, and extracted IQ packet segments.
+        Barker Code Matched Filter Cross-Correlator using GNU Radio filter.fir_filter_ccc flowgraph.
         """
         y = np.asarray(samples, dtype=np.complex64)
         if len(y) < barker_length * samples_per_symbol:
@@ -71,7 +71,24 @@ class L1PacketDetector:
         L = len(ref_signal)
         ref_energy = np.sum(np.abs(ref_signal)**2)
 
-        # Sliding window cross-correlation
+        # Run GNU Radio FIR matched filter top_block flowgraph
+        class BarkerMatchedFilterFlowgraph(gr.top_block):
+            def __init__(self, samples_in, ref_sig):
+                super().__init__("BarkerMatchedFilterFlowgraph")
+                taps = np.conj(ref_sig[::-1]).astype(np.complex64)
+                self.src = blocks.vector_source_c(samples_in.tolist(), False)
+                self.fir = filter.fir_filter_ccc(1, taps.tolist())
+                self.sink = blocks.vector_sink_c()
+                self.connect(self.src, self.fir, self.sink)
+
+            def run_filter(self):
+                self.run()
+                return np.array(self.sink.data(), dtype=np.complex64)
+
+        tb = BarkerMatchedFilterFlowgraph(y, ref_signal)
+        mf_out = tb.run_filter()
+
+        # Compute normalized metric from FIR filter output
         num_windows = len(y) - L + 1
         corr_metric = np.zeros(num_windows, dtype=np.float32)
 
@@ -79,10 +96,9 @@ class L1PacketDetector:
             window = y[n : n + L]
             win_energy = np.sum(np.abs(window)**2)
             if win_energy > 1e-9:
-                cross = np.sum(window * np.conj(ref_signal))
-                corr_metric[n] = (np.abs(cross)**2) / (win_energy * ref_energy)
+                mf_val = mf_out[n + L - 1] if (n + L - 1) < len(mf_out) else 0.0
+                corr_metric[n] = (np.abs(mf_val)**2) / (win_energy * ref_energy)
 
-        # Peak detection above threshold
         peak_indices = []
         peak_values = []
         
@@ -90,7 +106,6 @@ class L1PacketDetector:
         min_distance = L * 2
         while n < len(corr_metric):
             if corr_metric[n] >= threshold:
-                # Local maximum in neighborhood
                 end_search = min(n + min_distance, len(corr_metric))
                 local_max_rel = np.argmax(corr_metric[n:end_search])
                 best_idx = n + local_max_rel
@@ -101,12 +116,8 @@ class L1PacketDetector:
             else:
                 n += 1
 
-        # Extract packet segments
         pkt_len = packet_len_samples if packet_len_samples is not None else L * 8
-        detected_packets = []
-        for p_idx in peak_indices:
-            pkt = y[p_idx : min(p_idx + pkt_len, len(y))]
-            detected_packets.append(pkt)
+        detected_packets = [y[p_idx : min(p_idx + pkt_len, len(y))] for p_idx in peak_indices]
 
         return {
             "num_packets_found": len(peak_indices),

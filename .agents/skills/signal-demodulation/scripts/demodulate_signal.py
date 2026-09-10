@@ -12,6 +12,8 @@ SKILL_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SKILL_DIR, "..", "..", ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+if os.path.exists("/usr/lib/python3/dist-packages") and "/usr/lib/python3/dist-packages" not in sys.path:
+    sys.path.append("/usr/lib/python3/dist-packages")
 
 from gr_playground.utils.sigmf_io import read_sigmf
 from gr_playground.dsp.demodulation import demodulate_signal_flowgraph

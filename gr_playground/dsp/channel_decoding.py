@@ -8,20 +8,38 @@ Implements:
 """
 
 import numpy as np
+from gnuradio import gr, blocks, fec
 
 class ChannelDecoder:
-    """Decoder for Forward Error Correction (FEC) schemes."""
+    """Decoder for Forward Error Correction (FEC) schemes using GNU Radio flowgraphs."""
 
     @staticmethod
     def decode_repetition(bits: np.ndarray, rate: int = 3) -> np.ndarray:
-        """Majority voting decoder for repetition codes."""
-        bits = np.asarray(bits, dtype=np.uint8)
-        n_blocks = len(bits) // rate
-        bits_truncated = bits[:n_blocks * rate]
-        blocks = bits_truncated.reshape(n_blocks, rate)
-        # Sum across rows; if sum > rate/2, bit is 1 else 0
-        decoded = (np.sum(blocks, axis=1) > (rate / 2.0)).astype(np.uint8)
-        return decoded
+        """Majority voting decoder for repetition codes using GNU Radio fec.repetition_decoder flowgraph."""
+        bits_u8 = np.asarray(bits, dtype=np.uint8)
+        n_blocks = len(bits_u8) // rate
+        if n_blocks == 0:
+            return np.array([], dtype=np.uint8)
+            
+        class RepetitionDecoderFlowgraph(gr.top_block):
+            def __init__(self, in_bits, rep_rate, block_count):
+                super().__init__("RepetitionDecoderFlowgraph")
+                bits_trunc = in_bits[:block_count * rep_rate]
+                # Convert 0/1 bits to soft decision floats: 0 -> -1.0, 1 -> +1.0
+                soft_floats = (2.0 * bits_trunc - 1.0).astype(np.float32)
+                
+                dec_obj = fec.repetition_decoder_make(block_count, rep_rate, 0.5)
+                self.src = blocks.vector_source_f(soft_floats.tolist(), False)
+                self.dec = fec.decoder(dec_obj, gr.sizeof_float, gr.sizeof_char)
+                self.sink = blocks.vector_sink_b()
+                self.connect(self.src, self.dec, self.sink)
+
+            def run_decode(self):
+                self.run()
+                return np.array(self.sink.data(), dtype=np.uint8)
+
+        tb = RepetitionDecoderFlowgraph(bits_u8, rate, n_blocks)
+        return tb.run_decode()
 
     @staticmethod
     def decode_hamming_7_4(bits: np.ndarray) -> np.ndarray:
@@ -82,23 +100,21 @@ class ChannelDecoder:
         num_states = 64 # 2^6
         
         # Precompute expected outputs for state transitions
-        # state is 6 bits: [s5 s4 s3 s2 s1 s0] representing history
-        outputs = np.zeros((num_states, 2, 2), dtype=np.uint8) # (state, input_bit, [c1, c2])
+        outputs = np.zeros((num_states, 2, 2), dtype=np.uint8)
         next_states = np.zeros((num_states, 2), dtype=np.uint8)
         
         for state in range(num_states):
             state_bits = [(state >> (5 - i)) & 1 for i in range(6)]
             for in_bit in (0, 1):
-                reg = [in_bit] + state_bits # 7 bits
+                reg = [in_bit] + state_bits
                 c1 = np.sum(np.array(reg) * g1_poly) % 2
                 c2 = np.sum(np.array(reg) * g2_poly) % 2
                 outputs[state, in_bit] = [c1, c2]
                 next_state = ((state >> 1) | (in_bit << 5)) & 0x3F
                 next_states[state, in_bit] = next_state
 
-        # Path metrics initialized
         path_metrics = np.full(num_states, 1e6, dtype=np.float32)
-        path_metrics[0] = 0.0 # Start at zero state
+        path_metrics[0] = 0.0
         
         traceback = np.zeros((n_pairs, num_states), dtype=np.uint8)
         
@@ -120,7 +136,6 @@ class ChannelDecoder:
                         
             path_metrics = new_metrics
 
-        # Traceback from minimum metric state at end
         best_state = np.argmin(path_metrics)
         decoded_reversed = []
         curr_state = best_state
@@ -133,7 +148,6 @@ class ChannelDecoder:
             curr_state = prev_state
             
         decoded_bits = np.array(decoded_reversed[::-1], dtype=np.uint8)
-        # Strip the trailing 6 flush zero bits
         if len(decoded_bits) > 6:
             decoded_bits = decoded_bits[:-6]
             

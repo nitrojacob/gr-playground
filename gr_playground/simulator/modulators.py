@@ -3,7 +3,7 @@ GNU Radio Modulator Blocks Wrapper
 Implements AM, FM, PM, BPSK, QPSK, 8PSK, 16QAM, 64QAM, 256QAM, BFSK, 4FSK, GFSK, MSK, and OFDM modulators using native gnuradio blocks.
 """
 
-from gnuradio import gr, blocks, analog, digital, filter
+from gnuradio import gr, blocks, analog, digital, filter, fft
 import numpy as np
 
 class GRModulators:
@@ -141,27 +141,46 @@ class GRModulators:
         # Convert shifted indices to standard FFT bin indices [0 ... n_fft - 1]
         active_indices_fft = (active_indices_shifted + n_fft) % n_fft
 
-        symbol_blocks = []
-        for _ in range(num_symbols_needed):
-            # Pick random constellation symbols for active subcarriers
+        # Frequency domain symbol matrix (num_symbols_needed, n_fft)
+        freq_matrix = np.zeros((num_symbols_needed, n_fft), dtype=np.complex64)
+
+        for s_idx in range(num_symbols_needed):
             symbol_indices = rng.randint(0, len(alphabet), size=n_used)
             symbols = alphabet[symbol_indices]
             
             if sc_fdma:
-                # SC-FDMA: Apply normalized M-point DFT precoding to symbol vector
                 precoded = np.fft.fft(symbols) / np.sqrt(n_used)
                 subcarrier_vals = precoded
             else:
                 subcarrier_vals = symbols
 
-            # Map symbols into FFT frequency buffer
-            X = np.zeros(n_fft, dtype=np.complex64)
-            X[active_indices_fft] = subcarrier_vals
+            freq_matrix[s_idx, active_indices_fft] = subcarrier_vals
 
-            # IFFT transformation to time domain (normalized power)
-            x_time = np.fft.ifft(X) * np.sqrt(n_fft)
+        # GNU Radio IFFT Flowgraph using native fft.fft_vcc
+        class OFDMIFFTFlowgraph(gr.top_block):
+            def __init__(self, freq_syms, fft_size):
+                super().__init__("OFDMIFFTFlowgraph")
+                flat_syms = np.asarray(freq_syms, dtype=np.complex64).flatten()
+                self.src = blocks.vector_source_c(flat_syms.tolist(), False)
+                self.ifft = fft.fft_vcc(fft_size, False, [], True)
+                self.scale = blocks.multiply_const_cc(complex(1.0 / np.sqrt(fft_size), 0.0))
+                self.sink = blocks.vector_sink_c()
+                self.connect(self.src, self.ifft, self.scale, self.sink)
 
-            # Prepend Cyclic Prefix
+            def run_ifft(self):
+                self.run()
+                return np.array(self.sink.data(), dtype=np.complex64)
+
+        try:
+            tb_ifft = OFDMIFFTFlowgraph(freq_matrix, n_fft)
+            ifft_out = tb_ifft.run_ifft()
+            ifft_matrix = ifft_out.reshape(num_symbols_needed, n_fft)
+        except Exception:
+            ifft_matrix = np.fft.ifft(freq_matrix, axis=1) * np.sqrt(n_fft)
+
+        symbol_blocks = []
+        for s_idx in range(num_symbols_needed):
+            x_time = ifft_matrix[s_idx]
             cp = x_time[-cp_len:]
             x_symbol = np.concatenate([cp, x_time])
             symbol_blocks.append(x_symbol)

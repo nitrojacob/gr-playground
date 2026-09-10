@@ -5,6 +5,22 @@ Pytest configuration and execution control hooks for gr-playground tests.
 """
 
 import os
+import sys
+
+# Ensure GNU Radio system path and workspace root are in sys.path and PYTHONPATH for subprocesses
+gnuradio_path = "/usr/lib/python3/dist-packages"
+if os.path.exists(gnuradio_path) and gnuradio_path not in sys.path:
+    sys.path.append(gnuradio_path)
+
+workspace_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if workspace_root not in sys.path:
+    sys.path.insert(0, workspace_root)
+
+current_pythonpath = os.environ.get("PYTHONPATH", "")
+extra_paths = [p for p in [workspace_root, gnuradio_path] if p not in current_pythonpath.split(":")]
+if extra_paths:
+    os.environ["PYTHONPATH"] = ":".join(extra_paths) + (":" + current_pythonpath if current_pythonpath else "")
+
 import pytest
 
 # Define exact layer dependency order by file basename

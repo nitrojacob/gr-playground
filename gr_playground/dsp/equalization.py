@@ -94,24 +94,44 @@ class L1Equalizer:
         mod_type: str = "QPSK"
     ) -> np.ndarray:
         """
-        Decision-Directed Adaptive Least Mean Squares (LMS) Equalizer.
-        Dynamically adjusts complex FIR filter taps: w[n+1] = w[n] + mu * e[n] * x*[n]
+        Decision-Directed Adaptive Least Mean Squares (LMS) Equalizer using GNU Radio top_block flowgraph.
         """
         y = np.asarray(samples, dtype=np.complex64)
         if len(y) < num_taps:
             return y
 
-        # Center tap initialized to 1.0, others 0.0
+        try:
+            class LMSEqualizerFlowgraph(gr.top_block):
+                def __init__(self, samples_in, taps_cnt, step_mu, mod_s):
+                    super().__init__("LMSEqualizerFlowgraph")
+                    self.src = blocks.vector_source_c(samples_in.tolist(), False)
+                    try:
+                        const = digital.constellation_bpsk().base() if mod_s.upper() == "BPSK" else digital.constellation_qpsk().base()
+                        self.eq = digital.lms_dd_equalizer_cc(taps_cnt, step_mu, 1, const)
+                    except Exception:
+                        self.eq = digital.cma_equalizer_cc(taps_cnt, 1.0, step_mu, 1)
+                    self.sink = blocks.vector_sink_c()
+                    self.connect(self.src, self.eq, self.sink)
+
+                def run_eq(self):
+                    self.run()
+                    return np.array(self.sink.data(), dtype=np.complex64)
+
+            tb = LMSEqualizerFlowgraph(y, num_taps, mu, mod_type)
+            res = tb.run_eq()
+            if len(res) == len(y):
+                return res
+        except Exception:
+            pass
+
+        # Fallback reference decision-directed LMS algorithm
         w = np.zeros(num_taps, dtype=np.complex64)
         w[num_taps // 2] = 1.0 + 0.0j
-
         output = np.zeros_like(y)
         buffer = np.zeros(num_taps, dtype=np.complex64)
-
         mod_upper = mod_type.upper()
 
         def quantize_symbol(val: complex) -> complex:
-            """Hard decision slicer for decision-directed error calculation."""
             if mod_upper == "BPSK":
                 return complex(1.0 if val.real > 0 else -1.0, 0.0)
             elif mod_upper in ["ASK", "2ASK", "OOK"]:
@@ -120,7 +140,7 @@ class L1Equalizer:
                 ang = np.angle(val) % (2 * np.pi)
                 idx = int(np.round(ang / (np.pi / 4.0))) % 8
                 return np.exp(1j * idx * np.pi / 4.0)
-            else: # QPSK / QAM fallback
+            else:
                 re = 1.0 / np.sqrt(2.0) if val.real > 0 else -1.0 / np.sqrt(2.0)
                 im = 1.0 / np.sqrt(2.0) if val.imag > 0 else -1.0 / np.sqrt(2.0)
                 return complex(re, im)
@@ -128,16 +148,10 @@ class L1Equalizer:
         for i in range(len(y)):
             buffer = np.roll(buffer, 1)
             buffer[0] = y[i]
-
-            # Filter output
             y_hat = np.dot(w, buffer)
             output[i] = y_hat
-
-            # Decision directed error
             d_hat = quantize_symbol(y_hat)
             e = d_hat - y_hat
-
-            # LMS tap update
             w += mu * e * np.conj(buffer)
 
         return output.astype(np.complex64)

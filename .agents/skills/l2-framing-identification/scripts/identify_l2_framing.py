@@ -3,8 +3,17 @@
 CLI script to identify Layer-2 framing and extract message payload from binary input files.
 """
 
-import argparse
+import os
 import sys
+
+SKILL_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SKILL_DIR, "..", "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+if os.path.exists("/usr/lib/python3/dist-packages") and "/usr/lib/python3/dist-packages" not in sys.path:
+    sys.path.append("/usr/lib/python3/dist-packages")
+
+import argparse
 import json
 from gr_playground.dsp.l2_framing_id import L2FramingIdentifier
 

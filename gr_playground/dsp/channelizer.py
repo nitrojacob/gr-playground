@@ -183,30 +183,14 @@ def extract_channel_flowgraph(samples, sample_rate=2.4e6, freq_offset_hz=0.0, ta
     """
     samples = np.asarray(samples, dtype=np.complex64)
 
-    if len(samples) > 1000000:
-        from scipy import signal
-        cutoff = target_bw_hz / 2.0
-        taps = signal.firwin(101, cutoff / (sample_rate / 2.0)).astype(np.float32)
-        chunk_size = 2000000
-        extracted_chunks = []
-        for c_i in range(0, len(samples), chunk_size):
-            chunk = samples[c_i:c_i+chunk_size]
-            t_chunk = (np.arange(c_i, c_i + len(chunk), dtype=np.float64)) / sample_rate
-            phase = (-2.0 * np.pi * freq_offset_hz * t_chunk).astype(np.float32)
-            rot = np.cos(phase) + 1j * np.sin(phase)
-            trans = chunk * rot
-            filt = signal.lfilter(taps, 1.0, trans)
-            extracted_chunks.append(filt[::decimation].astype(np.complex64))
-        narrowband_samples = np.concatenate(extracted_chunks)
-    else:
-        tb = ChannelizerFlowgraph(
-            samples,
-            sample_rate=sample_rate,
-            freq_offset_hz=freq_offset_hz,
-            target_bw_hz=target_bw_hz,
-            decimation=decimation
-        )
-        narrowband_samples = tb.run_channelizer()
+    tb = ChannelizerFlowgraph(
+        samples,
+        sample_rate=sample_rate,
+        freq_offset_hz=freq_offset_hz,
+        target_bw_hz=target_bw_hz,
+        decimation=decimation
+    )
+    narrowband_samples = tb.run_channelizer()
 
     output_rate = float(sample_rate) / float(decimation)
     output_center_freq = float(center_freq) + float(freq_offset_hz)

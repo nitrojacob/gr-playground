@@ -9,15 +9,32 @@ Implements:
 
 import numpy as np
 import struct
+from gnuradio import gr, blocks, fec
 
 class ChannelEncoder:
-    """Encoder for Forward Error Correction (FEC) schemes."""
+    """Encoder for Forward Error Correction (FEC) schemes using GNU Radio flowgraphs."""
 
     @staticmethod
     def encode_repetition(bits: np.ndarray, rate: int = 3) -> np.ndarray:
-        """Repeat each bit `rate` times."""
-        bits = np.asarray(bits, dtype=np.uint8)
-        return np.repeat(bits, rate)
+        """Repeat each bit `rate` times using native GNU Radio blocks.repeat flowgraph."""
+        bits_u8 = np.asarray(bits, dtype=np.uint8)
+        if len(bits_u8) == 0:
+            return bits_u8
+            
+        class RepetitionEncoderFlowgraph(gr.top_block):
+            def __init__(self, in_bits, rep_rate):
+                super().__init__("RepetitionEncoderFlowgraph")
+                self.src = blocks.vector_source_b(in_bits.tolist(), False)
+                self.rep = blocks.repeat(gr.sizeof_char, rep_rate)
+                self.sink = blocks.vector_sink_b()
+                self.connect(self.src, self.rep, self.sink)
+
+            def run_encode(self):
+                self.run()
+                return np.array(self.sink.data(), dtype=np.uint8)
+
+        tb = RepetitionEncoderFlowgraph(bits_u8, rate)
+        return tb.run_encode()
 
     @staticmethod
     def encode_hamming_7_4(bits: np.ndarray) -> np.ndarray:
