@@ -12,6 +12,7 @@ from .equalization import L1Equalizer
 from .channel_decoding import ChannelDecoder
 from .l2_framing_id import L2FramingIdentifier
 from .packet_detection import L1PacketDetector
+from .gmsk import GMSKDemodFlowgraph, GMSKPreambleDetector
 
 __all__ = [
     "analyze_spectrum",
@@ -25,5 +26,7 @@ __all__ = [
     "L1Equalizer",
     "ChannelDecoder",
     "L2FramingIdentifier",
-    "L1PacketDetector"
+    "L1PacketDetector",
+    "GMSKDemodFlowgraph",
+    "GMSKPreambleDetector"
 ]

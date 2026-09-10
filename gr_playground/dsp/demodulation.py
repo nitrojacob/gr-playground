@@ -105,6 +105,14 @@ def demodulate_signal_flowgraph(samples, sample_rate=32000, mod_type="QPSK", out
             preview = f"AM Audio Demodulated ({len(audio)} samples)"
         return audio, preview
 
+    elif mod_upper in ["GMSK", "MSK"]:
+        from gr_playground.dsp.gmsk import GMSKDemodFlowgraph
+        tb = GMSKDemodFlowgraph(samples, samples_per_symbol=4)
+        bits = tb.run_demod()
+        bit_str = "".join(str(b) for b in bits[:64])
+        preview = f"{mod_upper} Digital Bit Payload (Total {len(bits)} bits). Preview first 64 bits: [{bit_str}]"
+        return bits, preview
+
     else: # Digital PSK / QAM / FSK
         bits = slice_psk_qpsk_bits(samples, mod_type=mod_upper)
         # Convert first 64 bits to hex string preview

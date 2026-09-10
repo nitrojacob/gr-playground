@@ -14,7 +14,7 @@ from gr_playground.dsp.packet_detection import L1PacketDetector
 def main():
     parser = argparse.ArgumentParser(description="Perform Layer-1 IQ Preamble Cross-Correlation & Packet Detection.")
     parser.add_argument("--input", required=True, help="Path to input SigMF dataset (.sigmf-data or .sigmf-meta).")
-    parser.add_argument("--type", choices=["BARKER", "ZADOFF_CHU", "SCHMIDL_COX"], default="BARKER", help="Preamble type.")
+    parser.add_argument("--type", choices=["BARKER", "ZADOFF_CHU", "SCHMIDL_COX", "BT_LE", "AIS", "GSM"], default="BARKER", help="Preamble type.")
     parser.add_argument("--length", type=int, default=11, help="Barker code length (7, 11, or 13).")
     parser.add_argument("--threshold", type=float, default=0.5, help="Cross-correlation detection threshold.")
     parser.add_argument("--output", required=True, help="Path to output extracted packet SigMF dataset.")
@@ -29,6 +29,8 @@ def main():
         res = L1PacketDetector.detect_zadoff_chu_preamble(samples, u=25, N=63, threshold=args.threshold)
     elif args.type == "SCHMIDL_COX":
         res = L1PacketDetector.schmidl_cox_detect(samples, n_fft=64, sample_rate=sample_rate, threshold=args.threshold)
+    elif args.type in ["BT_LE", "AIS", "GSM"]:
+        res = L1PacketDetector.detect_gmsk_preamble(samples, preamble_type=args.type, threshold=args.threshold)
 
     num_found = res.get("num_packets_found", 0)
     indices = res.get("peak_indices", [])

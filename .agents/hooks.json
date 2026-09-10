@@ -13,5 +13,32 @@
         ]
       }
     ]
+  },
+  "ascii-file-write-strip": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "write_to_file|replace_file_content|multi_replace_file_content|write_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .agents/hooks-scripts/strip_ascii.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "pre_tool_execution": [
+      {
+        "matcher": "write_to_file|replace_file_content|multi_replace_file_content|write_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .agents/hooks-scripts/strip_ascii.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
   }
 }

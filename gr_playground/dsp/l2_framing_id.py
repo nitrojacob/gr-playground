@@ -162,19 +162,19 @@ class L2FramingIdentifier:
         if cobs_positions:
             start_pos = 0
             for c_pos in cobs_positions:
-                if c_pos > start_pos + 3:
+                if c_pos > start_pos + 4:
                     cobs_block = raw_bytes[start_pos:c_pos]
                     try:
                         decoded_cobs = cobs_decode(cobs_block)
-                        if len(decoded_cobs) >= 3:
+                        if len(decoded_cobs) >= 4:
                             payload = decoded_cobs[:-2]
                             rx_crc = struct.unpack("<H", decoded_cobs[-2:])[0]
                             calc_crc = crc16_ccitt(payload)
-                            if rx_crc == calc_crc:
+                            if rx_crc == calc_crc and len(payload) >= 2:
                                 return {
                                     "framing_type": "COBS",
                                     "is_valid_crc": True,
-                                    "frame_header": {"cobs_len": len(cobs_block)},
+                                    "frame_header": {},
                                     "extracted_message": payload,
                                     "extracted_message_str": payload.decode("utf-8", errors="ignore"),
                                     "confidence": 1.0
@@ -210,18 +210,22 @@ class L2FramingIdentifier:
                 "confidence": 0.0
             }
 
-        # Try normal and inverted bit polarities, across 8 bit shifts
+        # Try normal and inverted bit polarities, LSB and MSB bit orders, across 8 bit shifts
         for invert in (False, True):
             test_bits = (1 - bits) if invert else bits
-            for shift in range(8):
-                if len(test_bits) <= shift + 16:
-                    continue
-                shifted_bits = test_bits[shift:]
-                raw_bytes = cls._bits_to_bytes(shifted_bits)
-                
-                res = cls._scan_bytes(raw_bytes)
-                if res:
-                    return res
+            for bitorder in ("big", "little"):
+                for shift in range(8):
+                    if len(test_bits) <= shift + 16:
+                        continue
+                    shifted_bits = test_bits[shift:]
+                    n_bytes = len(shifted_bits) // 8
+                    if n_bytes == 0:
+                        continue
+                    raw_bytes = np.packbits(shifted_bits[: n_bytes * 8], bitorder=bitorder).tobytes()
+                    
+                    res = cls._scan_bytes(raw_bytes)
+                    if res:
+                        return res
 
         # Fallback if no valid CRC framing pattern found
         raw_fallback = cls._bits_to_bytes(bits)

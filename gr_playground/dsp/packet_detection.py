@@ -235,3 +235,19 @@ class L1PacketDetector:
             "estimated_cfo_hz": primary_cfo,
             "metric": m_metric
         }
+
+    @staticmethod
+    def detect_gmsk_preamble(
+        samples: np.ndarray,
+        preamble_type: str = "BT_LE",
+        samples_per_symbol: int = 4,
+        threshold: float = 0.5
+    ) -> Dict[str, Any]:
+        """Detect GMSK preambles (BT_LE, AIS, GSM_TSC0) using GMSKPreambleDetector."""
+        from gr_playground.dsp.gmsk import GMSKPreambleDetector
+        return GMSKPreambleDetector.detect_gmsk_preamble(
+            samples=samples,
+            preamble_type=preamble_type,
+            samples_per_symbol=samples_per_symbol,
+            threshold=threshold
+        )
