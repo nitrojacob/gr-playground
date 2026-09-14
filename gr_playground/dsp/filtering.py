@@ -29,7 +29,7 @@ class IQBalanceFlowgraph(gr.top_block):
         cos_phi = float(np.sqrt(1.0 - sin_phi**2))
 
         # Build GNU Radio block topology
-        self.src = blocks.vector_source_c(samples_c.tolist(), False)
+        self.src = blocks.vector_source_c(samples_c, False)
         self.c2f = blocks.complex_to_float()
         self.sub_i = blocks.add_const_ff(-mean_i)
         self.sub_q = blocks.add_const_ff(-mean_q)
@@ -70,7 +70,7 @@ class CleanupFlowgraph(gr.top_block):
     def __init__(self, samples, sample_rate=32000, cutoff_hz=8000.0, agc_enable=True, dc_block_enable=True):
         super(CleanupFlowgraph, self).__init__("CleanupFlowgraph")
         
-        self.src = blocks.vector_source_c(samples.tolist(), False)
+        self.src = blocks.vector_source_c(samples, False)
         last_block = self.src
         
         if dc_block_enable:

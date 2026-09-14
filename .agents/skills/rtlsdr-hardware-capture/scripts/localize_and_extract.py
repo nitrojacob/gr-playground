@@ -83,7 +83,7 @@ def main():
         output_sigmf_path=args.output
     )
 
-    out_rate = sample_rate / args.decimation
+    out_rate = out_meta["global"]["core:sample_rate"]
     abs_freq = center_freq + selected_offset
     print(f"\n✅ DDC Extraction Complete!")
     print(f"   Extracted Channel File: {args.output}")

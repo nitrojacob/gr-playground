@@ -88,3 +88,55 @@ def test_digital_downconverter_channel_extraction_to_sigmf():
         assert len(extracted) == 24000 // 10
         assert meta["global"]["core:sample_rate"] == 240000.0
         assert os.path.exists(sigmf_out)
+
+def test_wideband_signal_bandwidth_extraction_exceeds_50khz():
+    """
+    Testcase for Wideband Signals (e.g. WFM / 180-200 kHz bandwidth):
+    Verifies that wideband signals with RF bandwidth much larger than 50 kHz are correctly
+    detected by scan_wideband_channels, extracted by DDC without clipping, and analyzed
+    with their true occupied bandwidth (>= 140 kHz).
+    """
+    from gr_playground.dsp.spectrum import analyze_spectrum
+
+    sample_rate = 2.4e6
+    num_samples = int(sample_rate * 0.05)  # 50 ms capture
+    t = np.linspace(0, 0.05, num_samples, endpoint=False)
+
+    # Wideband FM signal (75 kHz frequency deviation, 15 kHz modulating tone -> Carson's BW ~ 180 kHz)
+    freq_dev = 75000.0
+    audio_freq = 15000.0
+    center_offset = 200000.0  # +200 kHz offset
+    modulator = np.sin(2 * np.pi * audio_freq * t)
+    phase = 2 * np.pi * (center_offset * t + (freq_dev / audio_freq) * (1.0 - np.cos(2 * np.pi * audio_freq * t)))
+    wfm_sig = 0.8 * np.exp(1j * phase)
+    noise = 0.02 * (np.random.randn(len(t)) + 1j * np.random.randn(len(t)))
+    wideband_sig = (wfm_sig + noise).astype(np.complex64)
+
+    # 1. Scan wideband spectrum for candidate channels
+    channels = scan_wideband_channels(wideband_sig, sample_rate=sample_rate, num_channels_max=5)
+    assert len(channels) >= 1, "Failed to detect wideband signal channel"
+
+    target_ch = channels[0]
+    detected_bw = target_ch["bandwidth_hz"]
+    print(f"Detected Channel Bandwidth: {detected_bw / 1e3:.1f} kHz")
+
+    # 2. Extract narrowband/wideband channel with adaptive DDC
+    target_bw = max(detected_bw, 180000.0)
+    extracted, meta = extract_channel_flowgraph(
+        wideband_sig,
+        sample_rate=sample_rate,
+        freq_offset_hz=target_ch["freq_offset_hz"],
+        target_bw_hz=target_bw,
+        decimation=None  # Adaptive decimation
+    )
+
+    out_rate = meta["global"]["core:sample_rate"]
+
+    # 3. Analyze spectrum of extracted channel
+    spec_metrics = analyze_spectrum(extracted, sample_rate=out_rate)
+    extracted_bw = spec_metrics["occupied_bw_hz"]
+    print(f"Extracted Signal Occupied Bandwidth: {extracted_bw / 1e3:.1f} kHz")
+
+    # Assert that extracted occupied bandwidth is larger than 140 kHz
+    assert extracted_bw >= 140000.0, f"Extracted occupied bandwidth ({extracted_bw/1e3:.1f} kHz) was clipped below 140 kHz!"
+

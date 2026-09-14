@@ -5,15 +5,15 @@ Scans arbitrary wideband SDR captures, detects active sub-channels, and extracts
 
 from gnuradio import gr, blocks, filter
 import numpy as np
-from scipy import signal
+from scipy import signal, ndimage
 import os
 from gr_playground.utils.sigmf_io import write_sigmf
 
-def scan_wideband_channels(samples, sample_rate=2.4e6, num_channels_max=10, min_snr_db=0.5, nperseg=32768, n_time_slices=40, target_channel_bw=100000.0, reject_spurs=True):
+def scan_wideband_channels(samples, sample_rate=2.4e6, num_channels_max=10, min_snr_db=0.5, nperseg=32768, target_slice_duration_sec=0.5, target_channel_bw=100000.0, reject_spurs=True):
     """
     Scans a wideband spectrum capture for active signal channels using:
       1. High-resolution FFT (nperseg=32768 -> 73.2 Hz bin resolution, +9 dB processing gain)
-      2. Temporal ensemble time-slice averaging across the capture (reduces noise variance by 1/sqrt(K))
+      2. Invariant temporal slice duration averaging (target_slice_duration_sec=0.5s) ensuring constant RAM bounds and burst sensitivity
       3. Adaptive rolling baseline noise floor estimation & Local SNR calculation
       4. Integrated band energy kernel convolution (100 kHz window)
       5. Automatic classification & spur/CW tone filtering
@@ -28,8 +28,9 @@ def scan_wideband_channels(samples, sample_rate=2.4e6, num_channels_max=10, min_
     if actual_nfft < 512:
         return []
     
-    # 1. Temporal Time-Slice Ensemble Averaging across multiple capture frames
-    n_slices = min(n_time_slices, max(1, n_samples // actual_nfft))
+    # 1. Slice-duration-based Temporal Ensemble Averaging (~0.5s per slice invariant to total capture duration)
+    target_slice_len = max(actual_nfft * 2, int(sample_rate * target_slice_duration_sec))
+    n_slices = max(1, int(round(n_samples / float(target_slice_len))))
     slice_len = n_samples // n_slices
 
     psd_accum = None
@@ -71,14 +72,16 @@ def scan_wideband_channels(samples, sample_rate=2.4e6, num_channels_max=10, min_
     snr_db = psd_db - noise_floor_db
 
     # 3. Integrated Band Energy (Convolution with target channel bandwidth kernel)
-    win_samples = max(1, int(target_channel_bw / df))
+    target_bw = min(target_channel_bw, float(sample_rate) * 0.8)
+    win_samples = max(1, int(target_bw / df))
     kernel = np.ones(win_samples) / win_samples
     band_psd = signal.convolve(psd_avg, kernel, mode='same')
     band_psd_db = 10.0 * np.log10(np.maximum(band_psd, 1e-12))
     band_snr_db = band_psd_db - noise_floor_db
 
     # 4. Detect candidate channel peaks on Local SNR (exact frequency bin localization)
-    min_dist_samples = max(1, int(50000.0 / df))
+    min_dist_hz = max(15000.0, min(target_channel_bw * 0.5, float(sample_rate) * 0.35))
+    min_dist_samples = max(1, int(min_dist_hz / df))
     peaks_idx, _ = signal.find_peaks(snr_db, height=min_snr_db, distance=min_dist_samples)
 
     if len(peaks_idx) == 0:
@@ -93,20 +96,48 @@ def scan_wideband_channels(samples, sample_rate=2.4e6, num_channels_max=10, min_
         local_snr = float(snr_db[pk])
         band_snr = float(band_snr_db[pk])
 
-        # Estimate local bandwidth around peak (power drops relative to peak)
-        thresh_db = noise_floor_db[pk] + (local_snr * 0.2)
-        l, r = pk, pk
-        while l > 0 and psd_db[l] > thresh_db:
+        # Estimate local occupied bandwidth around peak using dynamic smoothing window and lookahead gap tolerance
+        smooth_win_bins = max(5, int(4000.0 / df))
+        if smooth_win_bins % 2 == 0:
+            smooth_win_bins += 1
+        psd_smooth = signal.convolve(psd_db, np.ones(smooth_win_bins) / float(smooth_win_bins), mode='same')
+        bw_thresh_db = max(noise_floor_db[pk] + 3.0, peak_pwr - 15.0)
+        lookahead_bins = max(3, int(8000.0 / df))
+
+        # Search left boundary with gap tolerance for subcarrier nulls
+        l = pk
+        consecutive_below = 0
+        while l > 0:
+            if psd_smooth[l] <= bw_thresh_db:
+                consecutive_below += 1
+                if consecutive_below >= lookahead_bins:
+                    l += lookahead_bins
+                    break
+            else:
+                consecutive_below = 0
             l -= 1
-        while r < len(psd_db) - 1 and psd_db[r] > thresh_db:
+        l = max(0, l)
+
+        # Search right boundary with gap tolerance for subcarrier nulls
+        r = pk
+        consecutive_below = 0
+        while r < len(psd_smooth) - 1:
+            if psd_smooth[r] <= bw_thresh_db:
+                consecutive_below += 1
+                if consecutive_below >= lookahead_bins:
+                    r -= lookahead_bins
+                    break
+            else:
+                consecutive_below = 0
             r += 1
-        
+        r = min(len(psd_smooth) - 1, r)
+
         bw = abs(freqs[r] - freqs[l])
-        
+
         # Classify channel type based on occupied bandwidth
         if bw >= 40000.0:
             ch_type = "Wideband Channel"
-        elif bw >= 15000.0:
+        elif bw >= 4000.0 or sample_rate <= 100000.0:
             ch_type = "Narrowband Signal"
         else:
             ch_type = "Narrow Spur / CW Tone"
@@ -115,10 +146,29 @@ def scan_wideband_channels(samples, sample_rate=2.4e6, num_channels_max=10, min_
             "freq_offset_hz": peak_freq,
             "power_db": band_pwr,
             "peak_single_bin_db": peak_pwr,
-            "local_snr_db": band_snr,
-            "bandwidth_hz": float(max(bw, 10000.0)),
+            "local_snr_db": max(local_snr, band_snr),
+            "bandwidth_hz": float(max(bw, df * 2.0)),
             "channel_type": ch_type
         })
+
+    # Deduplicate / merge adjacent channel peaks that belong to the same wideband signal
+    merged_channels = []
+    # Sort by power/SNR descending first so main channel center takes precedence over sidebands
+    raw_channels.sort(key=lambda x: x["local_snr_db"], reverse=True)
+    for ch in raw_channels:
+        is_duplicate = False
+        for existing in merged_channels:
+            freq_diff = abs(ch["freq_offset_hz"] - existing["freq_offset_hz"])
+            min_sep = max(10000.0, min(100000.0, min(ch["bandwidth_hz"], existing["bandwidth_hz"]) * 0.25))
+            if freq_diff < min_sep:
+                is_duplicate = True
+                # Merge bandwidth
+                existing["bandwidth_hz"] = max(existing["bandwidth_hz"], ch["bandwidth_hz"])
+                break
+        if not is_duplicate:
+            merged_channels.append(ch)
+
+    raw_channels = merged_channels
 
     # Sort channels by integrated local SNR descending
     raw_channels.sort(key=lambda x: x["local_snr_db"], reverse=True)
@@ -127,18 +177,15 @@ def scan_wideband_channels(samples, sample_rate=2.4e6, num_channels_max=10, min_
         # Separate wideband/narrowband communication channels from single CW tones
         comm_channels = [c for c in raw_channels if c["channel_type"] != "Narrow Spur / CW Tone"]
         spur_channels = [c for c in raw_channels if c["channel_type"] == "Narrow Spur / CW Tone"]
-        # Include comm channels first, followed by spur channels
         sorted_channels = comm_channels + spur_channels
     else:
         sorted_channels = raw_channels
 
     selected = sorted_channels[:num_channels_max]
 
-    # Assign channel_id (1..N) and re-sort by frequency offset ascending
     for idx, ch in enumerate(selected, 1):
         ch["channel_id"] = idx
 
-    selected.sort(key=lambda x: x["freq_offset_hz"])
     return selected
 
 class ChannelizerFlowgraph(gr.top_block):
@@ -149,11 +196,18 @@ class ChannelizerFlowgraph(gr.top_block):
     def __init__(self, samples, sample_rate=2.4e6, freq_offset_hz=0.0, target_bw_hz=100000.0, decimation=10):
         super(ChannelizerFlowgraph, self).__init__("ChannelizerFlowgraph")
 
-        self.src = blocks.vector_source_c(samples.tolist(), False)
+        if isinstance(samples, np.ndarray):
+            self.src = blocks.vector_source_c(samples, False)
+        else:
+            self.src = blocks.vector_source_c(samples, False)
 
-        # Calculate lowpass FIR taps for frequency translating filter
-        cutoff_hz = target_bw_hz / 2.0
-        transition_bw = cutoff_hz * 0.2
+        # Calculate lowpass FIR taps accommodating target_bw_hz without aliasing distortion
+        out_rate = float(sample_rate) / float(decimation)
+        max_safe_cutoff = (out_rate / 2.0) * 0.90
+        cutoff_hz = min(target_bw_hz / 2.0, max_safe_cutoff)
+        cutoff_hz = max(cutoff_hz, 5000.0)
+        transition_bw = max(cutoff_hz * 0.15, 2000.0)
+
         taps = filter.firdes.low_pass(
             1.0,               # Gain
             sample_rate,       # Input sample rate
@@ -163,7 +217,7 @@ class ChannelizerFlowgraph(gr.top_block):
 
         # Frequency Translating FIR Filter
         self.xlating_filter = filter.freq_xlating_fir_filter_ccc(
-            decimation,
+            int(decimation),
             taps,
             freq_offset_hz,
             sample_rate
@@ -176,12 +230,19 @@ class ChannelizerFlowgraph(gr.top_block):
         self.run()
         return np.array(self.sink.data(), dtype=np.complex64)
 
-def extract_channel_flowgraph(samples, sample_rate=2.4e6, freq_offset_hz=0.0, target_bw_hz=100000.0, decimation=10, center_freq=100.0e6, output_sigmf_path=None):
+def extract_channel_flowgraph(samples, sample_rate=2.4e6, freq_offset_hz=0.0, target_bw_hz=100000.0, decimation=None, center_freq=100.0e6, output_sigmf_path=None):
     """
-    Extracts a narrowband channel from a wideband capture using GNU Radio DDC flowgraph or fast chunked FIR DDC.
+    Extracts a narrowband/wideband channel from a wideband capture using GNU Radio DDC flowgraph or fast chunked FIR DDC.
+    Supports adaptive decimation calculation when decimation is None or 'auto'.
     Returns (narrowband_samples, meta_dict). If output_sigmf_path is provided, writes to SigMF.
     """
     samples = np.asarray(samples, dtype=np.complex64)
+
+    if decimation is None or str(decimation).lower() == "auto":
+        desired_rate = max(target_bw_hz * 1.25, 40000.0)
+        decimation = max(1, int(round(float(sample_rate) / float(desired_rate))))
+
+    decimation = int(decimation)
 
     tb = ChannelizerFlowgraph(
         samples,

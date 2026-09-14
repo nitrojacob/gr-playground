@@ -34,7 +34,7 @@ from gr_playground.utils.sigmf_io import read_sigmf, write_sigmf
 from gr_playground.dsp.channelizer import scan_wideband_channels, extract_channel_flowgraph
 from gr_playground.dsp.spectrum import analyze_spectrum
 from gr_playground.dsp.filtering import cleanup_signal_flowgraph
-from gr_playground.dsp.modulation_id import classify_modulation
+from gr_playground.dsp.modulation_id import classify_modulation, compute_higher_order_cumulants, compute_constellation_features
 from gr_playground.dsp.synchronization import synchronize_signal_flowgraph
 from gr_playground.dsp.demodulation import demodulate_signal_flowgraph
 from gr_playground.dsp.flowgraph_builder import FlowgraphBuilder
@@ -99,24 +99,25 @@ def run_rf_analysis_pipeline(input_path, scan_only=False, channel_index=1, manua
             sample_rate=sample_rate,
             freq_offset_hz=offset_hz,
             target_bw_hz=target_ch.get("bandwidth_hz", 100000.0),
-            decimation=decimation,
+            decimation=None,  # Adaptive decimation matching channel bandwidth
             center_freq=center_freq,
             output_sigmf_path=extracted_sigmf
         )
-        ch_rate = sample_rate / decimation
+        ch_rate = ext_meta["global"]["core:sample_rate"]
 
         # Step 3: Spectral Analysis
         spec_metrics = analyze_spectrum(extracted_samples, sample_rate=ch_rate)
         print(f"📊 [1/5 Signal Analysis] SNR: {spec_metrics['snr_m2m4_db']:.1f} dB (PSD Peak: {spec_metrics['snr_psd_db']:.1f} dB), Occupied BW: {spec_metrics['occupied_bw_hz']/1e3:.1f} kHz")
 
-        # Step 4: Signal Cleanup
-        cleaned_samples = cleanup_signal_flowgraph(extracted_samples, sample_rate=ch_rate, cutoff_hz=spec_metrics['occupied_bw_hz']/2.0)
+        # Step 4: Signal Cleanup (LPF cutoff with headroom to prevent clipping wideband FM sidebands)
+        lpf_cutoff = max(spec_metrics['occupied_bw_hz'] * 0.75, float(ch_rate) * 0.40)
+        cleaned_samples = cleanup_signal_flowgraph(extracted_samples, sample_rate=ch_rate, cutoff_hz=lpf_cutoff, agc_enable=False)
         cleaned_sigmf = os.path.join(output_dir, f"cleaned_ch_{int(abs_rf/1e3)}k.sigmf-data")
         write_sigmf(cleaned_sigmf, cleaned_samples, sample_rate=ch_rate, center_freq=abs_rf)
         print(f"🧼 [2/5 Signal Cleanup] Applied Gram-Schmidt IQ balancing, DC blocker, and bandpass filter.")
 
-        # Slice active frame segment for AMC, sync, and demodulation (max 500k samples ~ 2 sec)
-        proc_samples = cleaned_samples[:500000]
+        # Slice active frame segment for AMC, sync, and demodulation (skip initial 2000 samples of filter transient)
+        proc_samples = cleaned_samples[2000:502000] if len(cleaned_samples) > 4000 else cleaned_samples
 
         # Step 5: Automatic Modulation Recognition
         preds, cumulants, const_stats = classify_modulation(proc_samples)
