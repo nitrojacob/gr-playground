@@ -10,11 +10,12 @@ This document specifies the end-to-end plan of action to upgrade the Automatic M
 - **High Classification Accuracy**:
   - $> 90\%$ overall accuracy at $\text{SNR} \ge 5\text{ dB}$.
   - $> 95\%$ overall accuracy at $\text{SNR} \ge 10\text{ dB}$.
-- **Supported Modulation Classes (13 Total)**:
+- **Supported Modulation Classes (16 Total)**:
   - **Analog**: AM, FM
   - **Digital Constant Envelope**: BPSK, GFSK
   - **Digital Phase/Quadrature**: QPSK, 8PSK, 16QAM, 64QAM, 256QAM
   - **Digital Amplitude Shift Keying**: ASK / OOK
+  - **Digital Satellite & IoT (Offset/APSK)**: 16APSK, 32APSK, OQPSK
   - **Multicarrier / Broadband**: OFDM, SC-FDMA
   - **Unmodulated Channel**: Thermal Noise
 
@@ -33,7 +34,7 @@ To train a robust classifier, training data will be generated using synthetic ch
                   v
 +------------------------------------+
 | Synthetic Signal Generation Sweep  |
-| - 13 Modulation Classes            |
+| - 16 Modulation Classes            |
 | - SNR Sweep: -10 dB to +30 dB      |
 | - Impairments: CFO, SRO, IQ, Fading|
 +-----------------+------------------+
@@ -43,7 +44,7 @@ To train a robust classifier, training data will be generated using synthetic ch
                   v                                   v
 +------------------------------------+   +------------------------------------+
 | Synthetic IQ Frame Dataset         |   | Real RTL-SDR SigMF Annotations     |
-| (250,000 Frames)                   |   | (25,000 Frames)                    |
+| (320,000 Frames)                   |   | (32,000 Frames)                    |
 +-----------------+------------------+   +----------------+-------------------+
                   |                                   |
                   +-----------------+-----------------+
@@ -51,7 +52,7 @@ To train a robust classifier, training data will be generated using synthetic ch
                                     v
                   +-----------------------------------+
                   | Combined Feature Matrix           |
-                  | (X: [275,000 x 26], Y: [275,000]) |
+                  | (X: [352,000 x 26], Y: [352,000]) |
                   +-----------------------------------+
 ```
 
@@ -59,12 +60,14 @@ To train a robust classifier, training data will be generated using synthetic ch
 
 Synthetic samples will be produced using `ChannelSimulatorFlowgraph` (`gr_playground/simulator/channel_simulator.py`).
 
-* **Total Samples**: 275,000 frame instances ($20,000$ synthetic frames per class + $25,000$ real hardware frames).
+* **Total Samples**: 440,000 frame instances ($25,000$ synthetic frames per class $\times 16$ + $40,000$ real hardware frames).
 * **Frame Size**: $N = 2048$ complex64 IQ samples per frame.
 * **Parameter Sweep Matrix**:
 
 | Parameter | Sweep Range / Distribution | Description |
 | :--- | :--- | :--- |
+| **Sample Rate ($f_s$)** | **$32\text{ kHz}$ to $20\text{ MSPS}$** (Logarithmic / Grid Sweep) | Receiver sampling rate variation |
+| **Capture Duration ($T$)** | **$0.1\text{ s}$ to $60.0\text{ s}$** (Single frame to long sweep) | Sequence length variation for Meta-Learner |
 | **SNR** | $-10\text{ dB}$ to $+30\text{ dB}$ ($1\text{ dB}$ step size) | Additive White Gaussian Noise (AWGN) level |
 | **Carrier Frequency Offset (CFO)** | Uniform $[-0.10 \cdot f_s, +0.10 \cdot f_s]$ | Residual frequency drift relative to sample rate |
 | **Symbol Rate / SPS** | $SPS \in \{2, 4, 8, 16\}$ | Samples per symbol for digital schemes |
@@ -131,9 +134,9 @@ Generator (In-Memory IQ Block) ──► Extract 26 Features ──► Append to
 
 | Dataset Component | Target Unit | Instance Count | Matrix Shape | Persistent Feature File (Disk) | Raw IQ Sample Caching |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Stage 1 (Frame-Level)** | 2048-sample IQ frame | **286,000 frames** (260k synth + 26k real) | `[286,000 , 26]` | **~29.7 MB** (`amc_stage1_features.npz`) | **0.0 GB (Discarded)** |
-| **Stage 2 (Meta-Learner)** | Multi-frame sequence | **19,500 sequences** (1,500 / class) | `[19,500 , 18]` | **~1.4 MB** (`amc_stage2_features.npz`) | **0.0 GB (Discarded)** |
-| **Total Feature Storage** | Extracted Feature Files | **305,500 total** | — | **~31.1 MB Total Disk Space** | **0.0 GB Storage** |
+| **Stage 1 (Frame-Level)** | 2048-sample IQ frame | **440,000 frames** (400k synth + 40k real) | `[440,000 , 26]` | **~45.7 MB** (`amc_stage1_features.npz`) | **0.0 GB (Discarded)** |
+| **Stage 2 (Meta-Learner)** | Multi-frame sequence | **32,000 sequences** (2,000 / class) | `[32,000 , 21]` | **~2.7 MB** (`amc_stage2_features.npz`) | **0.0 GB (Discarded)** |
+| **Total Feature Storage** | Extracted Feature Files | **472,000 total** | — | **~48.4 MB Total Disk Space** | **0.0 GB Storage** |
 
 #### Deployable Model Artifact Payload:
 * `amc_frame_classifier.pkl` / `.json`: **~1.5 MB**
@@ -185,16 +188,16 @@ Complex IQ Frame (2048 samples)
 ### 4.1 Algorithm Selection
 * **Primary Algorithm**: **`sklearn.ensemble.HistGradientBoostingClassifier`** (Pre-installed via `scikit-learn 1.4.1`)
   * Loss: `log_loss` (multi-class cross-entropy)
-  * Number of Classes: 13
+  * Number of Classes: 16
   * Parallelization: OpenMP / multi-threading built-in
   * Advantages: Requires zero external package installations, offers sub-millisecond inference per block, and matches LightGBM/XGBoost classification performance.
 * **Secondary / Optional Algorithm**: `xgboost.XGBClassifier` (if explicitly installed)
 
 ### 4.2 Cross-Validation & Data Split
 * **Train / Val / Test Split**:
-  * 70% Training (~192,500 samples)
-  * 15% Validation (~41,250 samples)
-  * 15% Test (~41,250 samples)
+  * 70% Training (~246,400 samples)
+  * 15% Validation (~52,800 samples)
+  * 15% Test (~52,800 samples)
 * **Stratification**: Stratified by both **Modulation Class** and **SNR bin** to ensure uniform noise representation.
 
 ### 4.3 Hyperparameter Optimization
@@ -215,14 +218,14 @@ Hyperparameter tuning search space:
 To integrate the trained classifier seamlessly into `gr_playground`:
 
 1. **Model Persistence**:
-   - Save trained model binary to `gr_playground/dsp/models/amc_xgboost.json`.
-   - Include feature normalization parameters (mean/scale vectors) in `amc_xgboost_scaler.json`.
+   - Save trained model binary to `gr_playground/dsp/models/amc_stage1_model.pkl`.
+   - Include feature normalization parameters (mean/scale vectors) in `amc_stage2_model.pkl`.
 2. **Runtime Inference Integration**:
    - Update `classify_modulation()` in `gr_playground/dsp/modulation_id.py`:
      ```python
      # Extract 26-element feature vector
      features = extract_feature_vector(samples)
-     # Run XGBoost inference
+     # Run HistGradientBoosting inference
      probs = amc_model.predict_proba(features)[0]
      # Return dictionary mapping class name -> probability score
      return {class_names[i]: float(probs[i]) for i in range(len(class_names))}
@@ -261,10 +264,10 @@ Frame 1..T Predictions ──► Summary Feature Matrix ──► Meta-ML Classi
 ```
 
 1. **Meta-Feature Matrix Construction**:
-   For a capture of $T$ frames, compute an 18-element sequence feature vector:
-   * `mean_prob_[1..13]`: Mean probability vector across active frames ($\bar{\mathbf{p}}$).
-   * `max_prob_[1..13]`: Maximum probability vector ($\max \mathbf{p}_t$) to detect transient burst modulations.
-   * `prob_var_[1..13]`: Variance of probabilities across time (distinguishes continuous vs. bursty modulations).
+   For a capture of $T$ frames, compute a 21-element sequence feature vector:
+   * `mean_prob_[1..16]`: Mean probability vector across active frames ($\bar{\mathbf{p}}$).
+   * `max_prob_[1..16]`: Maximum probability vector ($\max \mathbf{p}_t$) to detect transient burst modulations.
+   * `prob_var_[1..16]`: Variance of probabilities across time (distinguishes continuous vs. bursty modulations).
    * `active_duty_cycle`: Fraction of active non-noise frames ($\frac{M_{active}}{T}$).
    * `mean_snr`, `var_snr`: Average and variance of frame-level SNR estimates.
 

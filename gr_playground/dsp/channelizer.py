@@ -101,17 +101,20 @@ def scan_wideband_channels(samples, sample_rate=2.4e6, num_channels_max=10, min_
         if smooth_win_bins % 2 == 0:
             smooth_win_bins += 1
         psd_smooth = signal.convolve(psd_db, np.ones(smooth_win_bins) / float(smooth_win_bins), mode='same')
-        bw_thresh_db = max(noise_floor_db[pk] + 3.0, peak_pwr - 15.0)
+        bw_thresh_db = noise_floor_db[pk] + 3.0
         lookahead_bins = max(3, int(8000.0 / df))
 
         # Search left boundary with gap tolerance for subcarrier nulls
         l = pk
         consecutive_below = 0
+        first_below_l = l
         while l > 0:
             if psd_smooth[l] <= bw_thresh_db:
+                if consecutive_below == 0:
+                    first_below_l = l
                 consecutive_below += 1
                 if consecutive_below >= lookahead_bins:
-                    l += lookahead_bins
+                    l = min(pk, first_below_l + 1)
                     break
             else:
                 consecutive_below = 0
@@ -121,11 +124,14 @@ def scan_wideband_channels(samples, sample_rate=2.4e6, num_channels_max=10, min_
         # Search right boundary with gap tolerance for subcarrier nulls
         r = pk
         consecutive_below = 0
+        first_below_r = r
         while r < len(psd_smooth) - 1:
             if psd_smooth[r] <= bw_thresh_db:
+                if consecutive_below == 0:
+                    first_below_r = r
                 consecutive_below += 1
                 if consecutive_below >= lookahead_bins:
-                    r -= lookahead_bins
+                    r = max(pk, first_below_r - 1)
                     break
             else:
                 consecutive_below = 0
@@ -133,17 +139,21 @@ def scan_wideband_channels(samples, sample_rate=2.4e6, num_channels_max=10, min_
         r = min(len(psd_smooth) - 1, r)
 
         bw = abs(freqs[r] - freqs[l])
+        chan_center_freq = float(0.5 * (freqs[l] + freqs[r]))
 
         # Classify channel type based on occupied bandwidth
         if bw >= 40000.0:
             ch_type = "Wideband Channel"
+            final_center_freq = chan_center_freq
         elif bw >= 4000.0 or sample_rate <= 100000.0:
             ch_type = "Narrowband Signal"
+            final_center_freq = chan_center_freq
         else:
             ch_type = "Narrow Spur / CW Tone"
+            final_center_freq = peak_freq
 
         raw_channels.append({
-            "freq_offset_hz": peak_freq,
+            "freq_offset_hz": final_center_freq,
             "power_db": band_pwr,
             "peak_single_bin_db": peak_pwr,
             "local_snr_db": max(local_snr, band_snr),

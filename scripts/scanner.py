@@ -25,6 +25,7 @@ import multiprocessing
 import queue
 import atexit
 import gc
+import tempfile
 import numpy as np
 
 # Ensure project root is in Python path for gr_playground imports
@@ -150,7 +151,7 @@ def generate_simulated_step(center_freq_hz, duration_sec, samp_rate=2.4e6, outpu
 
     # FM broadcast band (88 - 108 MHz)
     if 88.0 <= freq_mhz <= 108.0:
-        sig = 0.5 * np.exp(1j * (2 * np.pi * 150e3 * t + 5.0 * np.sin(2 * np.pi * 1e3 * t)))
+        sig = 0.5 * np.exp(1j * (2 * np.pi * 150e3 * t + 75.0 * np.sin(2 * np.pi * 1e3 * t)))
         noise += sig.astype(np.complex64)
     # ISM 433 MHz band
     elif 433.0 <= freq_mhz <= 434.0:
@@ -198,7 +199,7 @@ def analyze_step_channels(data_path, center_freq_hz, samp_rate=2.4e6, max_channe
         # 3. Analyze spectrum (SNR and Occupied Bandwidth)
         spec_metrics = analyze_spectrum(nb_samples, sample_rate=ch_rate)
         snr_db = max(spec_metrics.get("snr_m2m4_db", 0.0), pk.get("local_snr_db", 0.0))
-        occupied_bw_hz = spec_metrics.get("occupied_bw_hz", pk.get("bandwidth_hz", 10000.0))
+        occupied_bw_hz = max(pk.get("bandwidth_hz", 10000.0), spec_metrics.get("occupied_bw_hz", 0.0))
 
         # 4. Automatic Modulation Classification (AMC)
         # Limit max samples to 50k to bound memory usage and prevent OOM
@@ -474,7 +475,8 @@ def main():
     parser.add_argument("--gain", type=float, default=20.0, help="Tuner RF gain in dB (default: 20.0)")
     parser.add_argument("--gain-mode", type=str, default="manual", choices=["manual", "auto", "agc"], help="Gain control mode")
     parser.add_argument("--output", "--out-file", type=str, default="./cap/scanner_out.txt", help="Output report file path (default: ./cap/scanner_out.txt)")
-    parser.add_argument("--temp-dir", type=str, default="/tmp/scanner_captures", help="Directory for temporary step captures")
+    default_temp_dir = os.path.join(tempfile.gettempdir(), f"scanner_captures_{os.getuid()}" if hasattr(os, "getuid") else "scanner_captures")
+    parser.add_argument("--temp-dir", type=str, default=default_temp_dir, help="Directory for temporary step captures")
     parser.add_argument("--keep-captures", action="store_true", help="Keep raw SigMF step capture files instead of deleting after analysis")
     parser.add_argument("--simulate", action="store_true", help="Simulate spectrum step captures without calling physical RTL-SDR hardware")
 
