@@ -50,23 +50,34 @@ def estimate_snr_psd(freqs, psd):
     snr_db = 10.0 * np.log10(max(snr_lin, 1.0))
     return float(snr_db)
 
-def estimate_occupied_bandwidth(freqs, psd, power_fraction=0.99):
+def estimate_occupied_bandwidth(freqs, psd, power_fraction=0.99, subtract_noise=True):
     """
     Calculate the occupied bandwidth containing power_fraction (e.g. 99%) of total signal power.
+    If subtract_noise is True, subtracts baseline noise floor and suppresses noise/windowing sidelobes.
     """
-    total_power = np.sum(psd)
+    psd_clean = np.asarray(psd, dtype=np.float64)
+    if subtract_noise and len(psd_clean) >= 8:
+        sorted_psd = np.sort(psd_clean)
+        noise_floor = float(np.median(sorted_psd[:len(sorted_psd)//2]))
+        peak_pwr = float(np.max(psd_clean))
+        noise_q75 = float(np.percentile(sorted_psd[:len(sorted_psd)//2], 75))
+        # Threshold at noise floor or -23 dB below peak power to remove windowing leakage
+        noise_margin = max(4.0 * (noise_q75 - noise_floor), 0.005 * max(0.0, peak_pwr - noise_floor))
+        psd_clean = np.maximum(psd_clean - (noise_floor + noise_margin), 0.0)
+
+    total_power = np.sum(psd_clean)
     if total_power <= 0:
         return 0.0
-    
-    cum_power = np.cumsum(psd) / total_power
+
+    cum_power = np.cumsum(psd_clean) / total_power
     low_bound = (1.0 - power_fraction) / 2.0
     high_bound = 1.0 - low_bound
-    
+
     idx_low = np.searchsorted(cum_power, low_bound)
     idx_high = np.searchsorted(cum_power, high_bound)
-    
+
     idx_high = min(idx_high, len(freqs) - 1)
-    bw = abs(freqs[idx_high] - freqs[idx_low])
+    bw = float(abs(freqs[idx_high] - freqs[idx_low]))
     return bw
 
 def detect_peak_tones(freqs, psd, top_n=5, min_distance_hz=500.0):
@@ -107,9 +118,10 @@ def analyze_spectrum(samples, sample_rate=32000, nperseg=1024):
     nfft = max(nperseg, 1024)
     freqs, psd = signal.welch(samples, fs=sample_rate, nperseg=min(len(samples), nperseg), nfft=nfft, return_onesided=False)
     
-    # Shift to center 0 Hz
-    freqs = np.fft.fftshift(freqs)
-    psd = np.fft.fftshift(psd)
+    # Ensure monotonically increasing frequency order
+    sort_idx = np.argsort(freqs)
+    freqs = freqs[sort_idx]
+    psd = psd[sort_idx]
     
     # 2. SNR & Bandwidth
     snr_m2m4 = estimate_snr_m2m4(samples)

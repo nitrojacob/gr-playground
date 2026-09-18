@@ -70,9 +70,11 @@ The simulator provides automated signal generation, framing, FEC encoding, and p
 
 The DSP library provides decoupled, reusable modules for inspecting, filtering, synchronizing, and decoding signals.
 
-- **PRD-DSP-1 (Wideband Spectrum Scanning & DDC Channelizer)**:
+- **PRD-DSP-1 (Wideband Spectrum Scanning & Modular DDC Channelizer)**:
   - Scan wideband spectrum captures ($2.4+\text{ MSPS}$) using Temporal Ensemble Welch PSD (`nperseg=32768`, $+9\text{ dB}$ processing gain).
-  - Estimate adaptive rolling noise floor ($200\text{ kHz}$ median window) and local SNR prominence ($SNR_{\text{local}} = PSD_{\text{dB}} - NoiseFloor_{\text{dB}}$) to discover active sub-channels while rejecting $0\text{ Hz}$ LO leakage spikes.
+  - Modular Channel Identification Architecture (`gr_playground.dsp.channel_detection`): Support interchangeable detection strategies conforming to `BaseChannelDetector` (`CFARHeuristicChannelDetector`, `PPDHeuristicChannelDetector`, and future ML/DL models).
+  - Default Engine (`cfar_heuristic`): Estimate Cell-Averaging Constant False Alarm Rate (CA-CFAR) local noise floor, segment continuous connected energy regions above CFAR threshold, compute 99% Occupied Bandwidth (OBW), and measure spectral PAPR / single-bin energy concentration ratios.
+  - State Management: Support temporal state reset triggers (`reset_state()`, `reset_state` boolean flag, and `session_id` RF acquisition stream tracking) for stateful ML/DL models while operating with zero data-copy performance.
   - Isolate sub-channels using high-performance unified chunked FIR DDC (`extract_channel_flowgraph` / `extract_channel`), lowpass filter, decimate, AGC normalize, and export to SigMF.
 - **PRD-DSP-2 (Spectrum Analysis & SNR Metrics)**:
   - Compute Welch Power Spectral Density (PSD), peak tone frequencies, occupied bandwidth (99% power), DC offset level, and overall SNR via M2M4 ratio.

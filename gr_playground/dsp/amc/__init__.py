@@ -8,12 +8,12 @@ from gr_playground.dsp.amc.heuristic import HeuristicAMCClassifier
 from gr_playground.dsp.amc.ml import MLAMCClassifier
 from gr_playground.dsp.amc.dl import DLAMCClassifier
 
-def get_amc_classifier(mode: str = "heuristic", model_dir: str = None) -> BaseAMCClassifier:
+def get_amc_classifier(mode: str = "ml", model_dir: str = None) -> BaseAMCClassifier:
     """
     Factory function for AMC Classifiers.
 
     Parameters:
-    - mode: Strategy mode ("heuristic", "ml", "dl"). Default: "heuristic".
+    - mode: Strategy mode ("heuristic", "ml", "dl"). Default: "ml".
     - model_dir: Optional path to custom model artifact directory.
 
     Returns:

@@ -13,6 +13,8 @@ The playground consists of three core pillars:
 
 - **[Product Requirements Document (PRD)](specs/PRD.md)**: Product goals, functional/non-functional specifications, and pillar requirements.
 - **[Architecture & System Design](specs/ARCHITECTURE.md)**: System architecture overview, key architectural principles, complete directory breakdown, mathematical formulations, GRC schema rules, and test strategies.
+- **[Wideband Channel Identification Technical Note](specs/channel_identification.md)**: Specifications for modular channel detection strategies (`cfar_heuristic`, `ppd_heuristic`, ML/DL interface contract, zero-copy mechanics, and CA-CFAR migration rationale).
+- **[Automatic Modulation Classification Specification](specs/modulation_classifier.md)**: Specifications for 26-feature vector extraction, synthetic/real dataset collection pipeline, HistGradientBoosting training, and temporal sequence meta-stacking.
 
 ---
 

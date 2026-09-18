@@ -4,6 +4,9 @@ PreToolUse / PreToolExecution Hook Handler Script for Google Antigravity & Gemin
 Interprets file write tool calls via stdin and silently strips all non-ASCII, non-printable
 characters from newly inserted file content fields (ReplacementContent, CodeContent, content, code)
 before writing, while preserving TargetContent as-is so string matching in replace operations doesn't break.
+
+Implements Fail-Closed behavior (returns decision: deny on parsing error or invalid arguments)
+and robust argument extraction scoped specifically to file write tool calls.
 """
 
 import json
@@ -25,6 +28,9 @@ def sanitize_args(args: dict) -> dict:
     Recursively scans and sanitizes text payload fields in tool argument dictionary.
     Exempts 'TargetContent' so existing file line matching in replace operations is preserved.
     """
+    if not isinstance(args, dict):
+        raise TypeError(f"Expected argument dictionary, got {type(args).__name__}")
+
     sanitized = {}
     for key, value in args.items():
         # DO NOT strip TargetContent - it must match existing lines on disk exactly
@@ -49,24 +55,53 @@ def sanitize_args(args: dict) -> dict:
     return sanitized
 
 
+def extract_file_write_args(payload: dict) -> dict:
+    """
+    Robustly extracts argument dictionary from various payload formats specifically for file write tool calls.
+    Raises ValueError if valid file write argument dictionary cannot be found.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError("Payload must be a JSON dictionary.")
+
+    # Candidate containers for tool call objects
+    containers = [
+        payload.get("tool_call"),
+        payload.get("toolCall"),
+        payload.get("tool"),
+        payload,
+    ]
+
+    for container in containers:
+        if isinstance(container, dict):
+            for key in ("args", "arguments", "tool_input", "input", "parameters"):
+                val = container.get(key)
+                if isinstance(val, dict):
+                    return val
+
+    # Fallback: payload itself is a flat dictionary containing known file write keys
+    file_write_keys = {"TargetFile", "CodeContent", "ReplacementContent", "ReplacementChunks", "path", "content", "code"}
+    if any(k in payload for k in file_write_keys):
+        return payload
+
+    raise ValueError("Could not extract argument dictionary from file write tool payload.")
+
+
 def main():
     try:
         raw_input = sys.stdin.read()
         if not raw_input.strip():
-            print(json.dumps({"decision": "allow"}))
-            return
+            raise ValueError("Empty input received by strip_ascii hook handler.")
 
         payload = json.loads(raw_input)
-        
-        # Support both Gemini CLI format (tool_input / toolCall) and ADK format (tool_call)
-        tool_call = payload.get("tool_call") or payload.get("toolCall") or {}
-        args = tool_call.get("args") or payload.get("tool_input") or payload.get("args") or {}
-
+        args = extract_file_write_args(payload)
         sanitized_args = sanitize_args(args)
 
         response = {
             "decision": "allow",
             "tool_input": sanitized_args,
+            "tool_call": {
+                "args": sanitized_args
+            },
             "hookSpecificOutput": {
                 "tool_input": sanitized_args
             }
@@ -74,10 +109,15 @@ def main():
         print(json.dumps(response))
 
     except Exception as e:
-        # On error, log to stderr and fail open allowing unchanged arguments
-        sys.stderr.write(f"strip_ascii hook error: {e}\n")
-        print(json.dumps({"decision": "allow"}))
+        # Fail-closed (deny) to prevent un-sanitized writes on error
+        error_msg = f"strip_ascii hook processing error: {e}"
+        sys.stderr.write(f"{error_msg}\n")
+        print(json.dumps({
+            "decision": "deny",
+            "reason": f"PreToolUse Security Block (Fail-Closed): {error_msg}"
+        }))
 
 
 if __name__ == "__main__":
     main()
+

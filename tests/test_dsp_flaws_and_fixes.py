@@ -97,3 +97,24 @@ def test_noise_squelch_precheck_in_modulation_id():
     top_prob = predictions[0][1]
 
     assert top_pred in ["Noise", "Low SNR Noise"], f"Expected top prediction to be Noise, got {top_pred} ({top_prob*100:.1f}%)"
+
+
+def test_bandwidth_modulation_physical_sanity_check():
+    """
+    Test 5: Verifies that physical DSP sanity checks prevent false positive 64QAM/16QAM
+    classifications on narrow-bandwidth (<25 kHz) signal slices.
+    """
+    # Create narrow 15 kHz slice of complex signal
+    sample_rate = 240000.0
+    t = np.linspace(0, 0.1, 24000, endpoint=False)
+    sig = np.exp(1j * (2 * np.pi * 5000 * t + 1.5 * np.sin(2 * np.pi * 1000 * t))).astype(np.complex64)
+    noise = 0.05 * (np.random.randn(len(sig)) + 1j * np.random.randn(len(sig)))
+    narrow_slice = sig + noise
+
+    # Run classification passing physical bandwidth = 14900.0 Hz
+    preds, _, _ = classify_modulation(narrow_slice, bandwidth_hz=14900.0)
+
+    top_pred = preds[0][0]
+    wideband_high_order = ["64QAM", "256QAM", "16QAM", "OFDM", "SC-FDMA"]
+    assert top_pred not in wideband_high_order, f"Physical sanity check failed! Narrow 14.9 kHz signal classified as {top_pred}"
+

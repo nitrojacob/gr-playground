@@ -123,7 +123,7 @@ def squelch_check(samples):
     amp_kurt = features["amp_kurtosis"]
     phase_var = features["phase_var"]
 
-    return (spectral_flatness > 0.82 and amp_kurt >= 2.65 and phase_var > 3.0)
+    return (spectral_flatness > 0.85 and amp_kurt >= 2.80 and phase_var > 3.1)
 
 def slice_sequence(samples, sample_rate=32000.0, frame_size=2048, step_size=1024):
     """

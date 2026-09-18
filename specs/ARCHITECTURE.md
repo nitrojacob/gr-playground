@@ -52,7 +52,7 @@
 | Pillar | Module Location | Key Components / Files | Key Responsibilities & Outputs |
 | :--- | :--- | :--- | :--- |
 | **Pillar I: Simulator** | `gr_playground.simulator` | `sources.py`, `modulators.py`, `impairments.py`, `framing.py`, `channel_coding.py`, `sigmf_writer.py`, `channel_simulator.py` | Synthesizes analog/digital/multicarrier signals with AWGN, CFO, SRO, DC offset, multipath fading, L2 framing, and FEC channel coding; exports SigMF datasets. |
-| **Pillar II: Modular DSP Library** | `gr_playground.dsp`, `gr_playground.utils` | `channelizer.py`, `spectrum.py`, `filtering.py`, `modulation_id.py`, `synchronization.py`, `demodulation.py`, `equalization.py`, `packet_detection.py`, `gmsk.py`, `channel_decoding.py`, `l2_framing_id.py`, `flowgraph_builder.py`, `sigmf_io.py` | Performs Welch PSD scanning, DDC sub-channel extraction, Gram-Schmidt cleanup, AMC classification, L1 equalization (ZF/MMSE/LMS/CMA), L1 preamble detection (Barker/ZC/Schmidl-Cox/BT_LE/AIS/GSM), GMSK/MSK demodulation, L2 framing identification, FEC channel decoding, and GRC schema validation. |
+| **Pillar II: Modular DSP Library** | `gr_playground.dsp`, `gr_playground.utils` | `channelizer.py`, `channel_detection/`, `spectrum.py`, `filtering.py`, `modulation_id.py`, `synchronization.py`, `demodulation.py`, `equalization.py`, `packet_detection.py`, `gmsk.py`, `channel_decoding.py`, `l2_framing_id.py`, `flowgraph_builder.py`, `sigmf_io.py` | Performs Welch PSD scanning, modular channel identification (`CFARHeuristicChannelDetector`, `PPDHeuristicChannelDetector` - see [specs/channel_identification.md](specs/channel_identification.md)), DDC sub-channel extraction, Gram-Schmidt cleanup, AMC classification (see [specs/modulation_classifier.md](specs/modulation_classifier.md)), L1 equalization (ZF/MMSE/LMS/CMA), L1 preamble detection (Barker/ZC/Schmidl-Cox/BT_LE/AIS/GSM), GMSK/MSK demodulation, L2 framing identification, FEC channel decoding, and GRC schema validation. |
 | **Pillar III: Testcases & Benchmarks** | `tests/` | `test_realworld_receiver_impairments.py`, `test_equalization.py`, `test_l2_framing_and_channel_coding.py`, `test_packet_detection.py`, `test_gmsk_demodulation.py`, `test_wideband.py`, `test_dsp.py`, `test_simulator.py`, `test_skill_verification.py` | Evaluates DSP algorithms and agent skills against realistic real-world receiver non-idealities across 58 automated test cases. |
 
 ---
@@ -81,7 +81,12 @@ gr-playground/
 │   │   ├── channel_coding.py      # FEC Encoders (Convolutional K=7, Hamming 7/4, Repetition, Reed-Solomon)
 │   │   └── sigmf_writer.py        # SigMF v1.0 dataset exporter
 │   ├── dsp/                       # PILLAR II: Modular Signal Processing Library
-│   │   ├── channelizer.py         # Wideband spectrum scanning & DDC channel extraction
+│   │   ├── channelizer.py         # Wideband spectrum scanning & DDC channel extraction dispatcher
+│   │   ├── channel_detection/     # Modular Channel Identification Package (Strategy / Factory Pattern)
+│   │   │   ├── __init__.py        # Factory dispatcher (`get_channel_detector`)
+│   │   │   ├── base.py            # BaseChannelDetector abstract interface & state reset contract
+│   │   │   ├── cfar_heuristic.py  # CFARHeuristicChannelDetector (CA-CFAR + 99% OBW energy regions)
+│   │   │   └── ppd_heuristic.py   # PPDHeuristicChannelDetector (Point Peak Detection heuristic)
 │   │   ├── spectrum.py            # Welch PSD, M2M4 SNR, occupied BW, peak tone detection
 │   │   ├── filtering.py           # Gram-Schmidt I/Q balance, DC blocker, AGC2
 │   │   ├── modulation_id.py       # Higher-order cumulants (C20-C63) & AMC decision tree
@@ -181,6 +186,17 @@ gr-playground/
 ---
 
 ### 4.2. Modular DSP & Decoding Architecture (`gr_playground.dsp`)
+
+#### 0. Wideband Channel Identification (`channel_detection/`)
+*(See detailed technical note: [Technical Note: Wideband Channel Identification Architecture](specs/channel_identification.md))*
+- **Strategy & Factory Pattern**: Exposes `get_channel_detector(mode)` creating `BaseChannelDetector` strategies (`cfar_heuristic` default, `ppd_heuristic`, extensible for ML/DL models).
+- **Interface & Zero-Copy**: Accepts `iq_data` (`complex64` pass-by-reference), precomputed PSD/freq arrays, and `reset_state()` trigger for stateful ML/DL models.
+- **CA-CFAR Watershed Engine**: Combines dB-domain median CFAR noise floor estimation with Multi-Peak Watershed Decomposition to resolve rippled Wideband FM without fragmentation and split closely spaced 50 kHz adjacent channels cleanly.
+
+#### 0.1. Automatic Modulation Classification (`modulation_id.py`)
+*(See detailed specification: [AMC Classifier Upgrade Specification](specs/modulation_classifier.md))*
+- **Feature Extraction Pipeline**: Extracts a 26-element physical feature vector per frame (Higher-Order Cumulants $C_{20}\dots C_{63}$, envelope statistics, spectral flatness/kurtosis, PAPR, and cyclic FFT peak ratios).
+- **ML Classifier & Stacking Model**: Uses `HistGradientBoostingClassifier` for sub-millisecond CPU inference across 16 modulation classes with temporal sequence meta-stacking for bursty transmissions.
 
 #### 1. Layer-1 Equalization (`equalization.py`)
 - **Zero-Forcing (ZF)**: Frequency-domain channel inversion $W(f) = 1 / H(f)$.

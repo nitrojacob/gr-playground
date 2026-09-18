@@ -171,8 +171,8 @@ def analyze_step_channels(data_path, center_freq_hz, samp_rate=2.4e6, max_channe
     if len(samples) == 0:
         return []
 
-    # 1. Wideband spectral channel scan
-    detected_peaks = scan_wideband_channels(samples, sample_rate=samp_rate, num_channels_max=max_channels, min_snr_db=1.5)
+    # 1. Wideband spectral channel scan (filter noise ripples below +4.0 dB SNR)
+    detected_peaks = scan_wideband_channels(samples, sample_rate=samp_rate, num_channels_max=max_channels, min_snr_db=4.0, reject_spurs=True)
 
     channels_info = []
     for idx, pk in enumerate(detected_peaks, 1):
@@ -204,11 +204,11 @@ def analyze_step_channels(data_path, center_freq_hz, samp_rate=2.4e6, max_channe
         # 4. Automatic Modulation Classification (AMC)
         # Limit max samples to 50k to bound memory usage and prevent OOM
         proc_samples = nb_samples[:50000] if len(nb_samples) > 50000 else nb_samples
-        preds, _, _ = classify_modulation(proc_samples)
+        preds, _, _ = classify_modulation(proc_samples, bandwidth_hz=occupied_bw_hz)
         top_mod, top_conf = preds[0] if preds else ("Unknown", 0.0)
 
-        # Filter out pure noise classifications if SNR is too low
-        if top_mod == "Noise" or snr_db < 1.0:
+        # Filter out pure noise classifications and low-SNR noise ripples (< +4.0 dB)
+        if top_mod == "Noise" or snr_db < 4.0:
             continue
 
         channels_info.append({
@@ -293,9 +293,25 @@ def capture_producer_thread(steps_mhz, duration, samp_rate, tuner_gain, gain_mod
     """
     PRODUCER THREAD: Continuously tunes RTL-SDR across the spectrum steps and dumps raw IQ captures into SigMF.
     Pushes tasks to task_queue and updates step_tasks_dict for stall recovery.
+    Exerts backpressure on capture thread once task_queue depth exceeds num_workers * 1.5.
     """
     num_steps = len(steps_mhz)
+    max_queue_size = max(1, int(num_workers * 1.5))
+
     for step_idx, center_mhz in enumerate(steps_mhz, 1):
+        if stop_event.is_set():
+            break
+
+        # Backpressure: Pause capture thread if task_queue size exceeds workers * 1.5
+        while not stop_event.is_set():
+            try:
+                q_len = task_queue.qsize()
+            except (NotImplementedError, AttributeError):
+                q_len = 0
+            if q_len < max_queue_size:
+                break
+            time.sleep(0.1)
+
         if stop_event.is_set():
             break
 
@@ -588,32 +604,35 @@ def main():
         t_writer.start()
 
         # Process Supervisor Loop: Monitor and auto-respawn dead worker processes
+        # Only monitor while producer thread is active. Once producer completes,
+        # worker termination on None sentinels is expected clean shutdown.
         while t_producer.is_alive() or t_writer.is_alive():
             time.sleep(0.5)
-            for idx, p_w in enumerate(worker_processes):
-                if not p_w.is_alive() and not stop_event.is_set():
-                    w_id = idx + 1
-                    old_pid = p_w.pid
-                    print(f"\n⚠️ [Process Supervisor] Worker Process #{w_id} (PID {old_pid}) died/OOMed! Respawning replacement process...")
-                    new_p = multiprocessing.Process(
-                        target=worker_process_loop,
-                        kwargs={
-                            "worker_id": w_id,
-                            "task_queue": task_queue,
-                            "result_queue": result_queue,
-                            "samp_rate": args.samp_rate,
-                            "keep_captures": args.keep_captures
-                        },
-                        name=f"AnalysisWorkerProcess-{w_id}",
-                        daemon=True
-                    )
-                    new_p.start()
-                    worker_processes[idx] = new_p
+            if t_producer.is_alive():
+                for idx, p_w in enumerate(worker_processes):
+                    if not p_w.is_alive() and not stop_event.is_set():
+                        w_id = idx + 1
+                        old_pid = p_w.pid
+                        print(f"\n⚠️ [Process Supervisor] Worker Process #{w_id} (PID {old_pid}) died/OOMed! Respawning replacement process...")
+                        new_p = multiprocessing.Process(
+                            target=worker_process_loop,
+                            kwargs={
+                                "worker_id": w_id,
+                                "task_queue": task_queue,
+                                "result_queue": result_queue,
+                                "samp_rate": args.samp_rate,
+                                "keep_captures": args.keep_captures
+                            },
+                            name=f"AnalysisWorkerProcess-{w_id}",
+                            daemon=True
+                        )
+                        new_p.start()
+                        worker_processes[idx] = new_p
 
         t_producer.join()
-        for p_w in worker_processes:
-            p_w.join(timeout=1.0)
         t_writer.join()
+        for p_w in worker_processes:
+            p_w.join(timeout=2.0)
 
     except KeyboardInterrupt:
         print("\n\n⚠️ Scanner interrupted by user (KeyboardInterrupt). Terminating worker processes...")
