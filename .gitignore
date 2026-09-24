@@ -223,3 +223,7 @@ cap/
 #GRC derived files
 grc/*.py
 
+#Temporary Files
+scripts/cleanup_old_notebook.py
+scripts/create_benchmark_notebook.py
+
