@@ -50,7 +50,7 @@ class HeuristicAMCClassifier(BaseAMCClassifier):
         c63 = cumulants["C63"]
         if is_noise:
             scores["Noise"] += 0.85
-        elif spectral_flatness < 0.80 and 2.5 <= amp_kurt <= 3.4 and c40 < 0.40 and amp_var > 0.05 and 0.20 < freq_var <= 0.35:
+        elif features.get("snr_m2m4_db", 0.0) > 6.0 and spectral_flatness < 0.80 and 2.5 <= amp_kurt <= 3.4 and c40 < 0.40 and amp_var > 0.05 and 0.20 < freq_var <= 0.35:
             # Multicarrier signals (OFDM / SC-FDMA)
             if amp_kurt > 2.85:
                 scores["OFDM"] += 0.85
@@ -58,33 +58,33 @@ class HeuristicAMCClassifier(BaseAMCClassifier):
             else:
                 scores["SC-FDMA"] += 0.85
                 scores["OFDM"] += 0.30
-        elif freq_var < 0.08 and c20 >= 0.60 and amp_kurt >= 2.5:
+        elif freq_var < 0.08 and c20 >= 0.60 and amp_kurt >= 2.5 and c40 < 0.50:
             # Amplitude Modulation (AM)
             scores["AM"] += 0.85
         elif 0.05 <= amp_var < 0.15 and c40 < 0.25 and c20 < 0.30:
             # 8-PSK
             scores["8PSK"] += 0.85
             scores["QPSK"] += 0.30
-        elif amp_var < 0.20 and c40 < 0.40:
+        elif amp_var < 0.20 and c20 < 0.35 and c40 < 0.40:
             # Constant Envelope schemes: FM vs GFSK
-            if freq_var > 0.35:
+            if freq_var > 0.45:
                 scores["GFSK"] += 0.85
-                scores["FM"] += 0.20
+                scores["FM"] += 0.30
             else:
                 scores["FM"] += 0.85
-                scores["GFSK"] += 0.20
+                scores["GFSK"] += 0.30
         elif c20 >= 0.60 and c40 >= 0.70:
             # BPSK vs ASK
             if amp_var >= 0.18:
-                scores["ASK"] += 0.85
-                scores["AM"] += 0.10
+                scores["ASK"] += 1.00
+                scores["AM"] += 0.05
             else:
                 scores["BPSK"] += 0.85
                 scores["QPSK"] += 0.10
-        elif amp_var >= 0.25 and amp_kurt < 2.2 and (zero_ratio >= 0.35 or c20 >= 0.50):
+        elif amp_var >= 0.15 and amp_kurt < 2.4 and (zero_ratio >= 0.20 or c20 >= 0.50):
             # Amplitude Shift Keying (ASK / OOK)
-            scores["ASK"] += 0.85
-            scores["AM"] += 0.10
+            scores["ASK"] += 1.00
+            scores["AM"] += 0.05
         elif c20 < 0.35 and c40 >= 0.40:
             # Digital Quadrature Modulations: QPSK vs 16-QAM vs 64-QAM
             if amp_var < 0.10:

@@ -12,8 +12,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from gr_playground.simulator.channel_simulator import ChannelSimulatorFlowgraph
 from gr_playground.utils.sigmf_io import read_sigmf
 
-def test_channel_simulator_sine_qpsk_generation_and_sigmf_io():
-    output_path = "/tmp/pytest_sim_qpsk.sigmf-data"
+def test_channel_simulator_sine_qpsk_generation_and_sigmf_io(tmp_path):
+    output_path = str(tmp_path / "pytest_sim_qpsk.sigmf-data")
     flowgraph = ChannelSimulatorFlowgraph(
         source_type="sine",
         mod_type="QPSK",
@@ -33,8 +33,8 @@ def test_channel_simulator_sine_qpsk_generation_and_sigmf_io():
     assert len(read_samples) == 4096
     assert meta["global"]["core:sample_rate"] == 32000
 
-def test_channel_simulator_audio_fm_generation():
-    output_path = "/tmp/pytest_sim_fm.sigmf-data"
+def test_channel_simulator_audio_fm_generation(tmp_path):
+    output_path = str(tmp_path / "pytest_sim_fm.sigmf-data")
     flowgraph = ChannelSimulatorFlowgraph(
         source_type="audio",
         mod_type="FM",

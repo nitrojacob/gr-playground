@@ -137,8 +137,9 @@ def extract_frame_features(samples):
         inst_freq_skewness, amp_skewness, snr_m2m4_db, psd_peak_ratio
     ], dtype=np.float32)
 
-    # Sanitize NaNs and Infs
+    # Sanitize NaNs, Infs, and extreme values
     feats = np.nan_to_num(feats, nan=0.0, posinf=100.0, neginf=-100.0)
+    feats = np.clip(feats, -100.0, 100.0)
     return feats
 
 def extract_sequence_features(frame_prob_matrix, snrs_list=None):

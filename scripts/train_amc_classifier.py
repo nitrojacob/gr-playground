@@ -13,9 +13,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from gr_playground.dsp.amc import MODULATION_CLASSES
+from gr_playground.dsp.amc import MODULATION_CLASSES, RADIOML_TO_PARENT_MAP
 from gr_playground.dsp.amc.features import extract_frame_features
 from gr_playground.simulator.channel_simulator import ChannelSimulatorFlowgraph
+from scripts.generate_amc_dataset import generate_raw_iq_frame
 
 class AMCFeatureNet(nn.Module):
     """
@@ -45,7 +46,6 @@ class AMCFeatureNet(nn.Module):
 
 def generate_training_data(samples_per_class=300):
     print(f"⚡ Generating synthetic DSP feature dataset across {len(MODULATION_CLASSES)} modulation classes...")
-    sim = ChannelSimulatorFlowgraph()
     
     X_list = []
     y_list = []
@@ -54,34 +54,26 @@ def generate_training_data(samples_per_class=300):
     snrs = [-4.0, 0.0, 4.0, 10.0, 16.0, 24.0]
 
     for mod_name in MODULATION_CLASSES:
-        c_idx = class_to_idx[mod_name]
-        
-        # Map to simulator target modulation
-        sim_mod = mod_name
-        if mod_name in ["OOK", "4ASK", "8ASK"]:
-            sim_mod = "ASK"
-        elif mod_name in ["AM-SSB-WC", "AM-SSB-SC", "AM-DSB-WC", "AM-DSB-SC"]:
-            sim_mod = "AM"
-        elif mod_name == "CPFSK":
-            sim_mod = "GFSK"
-        elif mod_name in ["16PSK", "32PSK"]:
-            sim_mod = "8PSK"
-        elif mod_name in ["32QAM", "128QAM"]:
-            sim_mod = "64QAM"
-        elif mod_name in ["64APSK", "128APSK"]:
-            sim_mod = "32APSK"
+        parent_mod = RADIOML_TO_PARENT_MAP.get(mod_name, mod_name)
+        target_idx = class_to_idx[parent_mod]
 
         for _ in range(samples_per_class):
             snr = float(np.random.choice(snrs))
-            try:
-                samples = sim.generate_signal(modulation=sim_mod, num_samples=2048, snr_db=snr)
-            except Exception:
-                # Fallback to noise
-                samples = (np.random.randn(2048) + 1j * np.random.randn(2048)).astype(np.complex64)
+            num_samples = int(np.random.choice([2048, 4096, 8192]))
+            cfo_rel = float(np.random.uniform(-0.005, 0.005))
+            phase_noise = float(np.random.uniform(0.0, 0.02))
+
+            samples = generate_raw_iq_frame(
+                mod_type=mod_name,
+                num_samples=num_samples,
+                snr_db=snr,
+                cfo_rel=cfo_rel,
+                phase_noise_std=phase_noise
+            )
 
             feat = extract_frame_features(samples)
             X_list.append(feat)
-            y_list.append(c_idx)
+            y_list.append(target_idx)
 
     X = np.vstack(X_list).astype(np.float32)
     y = np.array(y_list, dtype=np.int64)

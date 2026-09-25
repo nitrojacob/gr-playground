@@ -14,6 +14,7 @@ Compares DSP/Agent tool estimations against ground-truth simulator metadata.
 import sys
 import os
 import shutil
+import tempfile
 import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
@@ -36,12 +37,15 @@ IMPAIRMENT_TIERS = {
 
 MODULATION_SCHEMES = ["FM", "AM", "BPSK", "QPSK", "16QAM"]
 
-def run_verification_benchmark():
+def run_verification_benchmark(work_dir=None):
+    if work_dir is None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            return run_verification_benchmark(work_dir=tmp_dir)
+
     print("=========================================================================")
     print("🚀 Running gr-playground Progressive Impairment Skill Verification Suite")
     print("=========================================================================\n")
 
-    work_dir = "/tmp/gr_playground_verification"
     os.makedirs(work_dir, exist_ok=True)
 
     total_tests = 0

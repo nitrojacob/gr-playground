@@ -7,6 +7,7 @@ across 6 progressive channel impairment levels (AWGN, CFO, SRO, DC offset, I/Q i
 import os
 import sys
 import json
+import tempfile
 import numpy as np
 
 # Ensure repository root is on sys.path
@@ -104,10 +105,14 @@ def compute_papr_db(samples):
     p_avg = np.mean(p_instantaneous) + 1e-12
     return float(10.0 * np.log10(p_peak / p_avg))
 
-def run_multicarrier_benchmark_suite(impairment_profile=None, verbose=True):
+def run_multicarrier_benchmark_suite(impairment_profile=None, output_dir=None, verbose=True):
     """
     Run multicarrier sub-parameter sweeps under a specified channel impairment profile.
     """
+    if output_dir is None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            return run_multicarrier_benchmark_suite(impairment_profile=impairment_profile, output_dir=tmp_dir, verbose=verbose)
+
     if impairment_profile is None:
         impairment_profile = PROGRESSIVE_IMPAIRMENT_LEVELS[1]
 
@@ -123,7 +128,6 @@ def run_multicarrier_benchmark_suite(impairment_profile=None, verbose=True):
 
     sample_rate = 2400000  # 2.4 MSPS
     num_samples = 16384
-    output_dir = "/tmp/multicarrier_benchmark"
     os.makedirs(output_dir, exist_ok=True)
 
     results = {

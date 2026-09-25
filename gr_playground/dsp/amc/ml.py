@@ -11,6 +11,7 @@ from gr_playground.dsp.amc.base import BaseAMCClassifier
 from gr_playground.dsp.amc.heuristic import HeuristicAMCClassifier
 from gr_playground.dsp.amc.common import squelch_check
 from gr_playground.dsp.amc.features import extract_frame_features
+from gr_playground.dsp.amc import MODULATION_CLASSES, RADIOML_TO_PARENT_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +64,6 @@ class MLAMCClassifier(BaseAMCClassifier):
             res["Noise"] = 1.0
             return res
 
-        # Squelch noise check for short sequence
-        if squelch_check(y):
-            res = {c: 0.0 for c in MODULATION_CLASSES}
-            res["Noise"] = 1.0
-            return res
-
         # ONNX Session Fast Path
         if self.onnx_session is not None:
             try:
@@ -80,12 +75,32 @@ class MLAMCClassifier(BaseAMCClassifier):
                 exp_logits = np.exp(logits - np.max(logits))
                 probs = exp_logits / (np.sum(exp_logits) + 1e-12)
 
-                res_dict = {MODULATION_CLASSES[i]: float(probs[i]) for i in range(min(len(probs), len(MODULATION_CLASSES)))}
-                # Fill any remaining MODULATION_CLASSES with 0.0
+                ml_raw = {MODULATION_CLASSES[i]: float(probs[i]) for i in range(min(len(probs), len(MODULATION_CLASSES)))}
+                
+                # Aggregate granular subclass probabilities onto parent classes
+                res_dict = {}
+                for c, p in ml_raw.items():
+                    parent = RADIOML_TO_PARENT_MAP.get(c, c)
+                    res_dict[parent] = res_dict.get(parent, 0.0) + p
+
                 for c in MODULATION_CLASSES:
                     if c not in res_dict:
                         res_dict[c] = 0.0
-                return res_dict
+
+                tot = sum(res_dict.values())
+                if tot > 0:
+                    res_dict = {k: v / tot for k, v in res_dict.items()}
+
+                # Ensemble blend with HeuristicAMCClassifier (35% ONNX ML + 65% Physical Heuristics)
+                h_probs = HeuristicAMCClassifier().classify(y, sample_rate)
+                blended = {}
+                for c in MODULATION_CLASSES:
+                    blended[c] = 0.35 * res_dict.get(c, 0.0) + 0.65 * h_probs.get(c, 0.0)
+
+                tot_b = sum(blended.values())
+                if tot_b > 0:
+                    blended = {k: v / tot_b for k, v in blended.items()}
+                return blended
             except Exception as e:
                 logger.warning(f"ONNX inference error: {e}. Falling back to Heuristic AMC.")
                 fallback = HeuristicAMCClassifier()
