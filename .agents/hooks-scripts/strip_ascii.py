@@ -1,58 +1,42 @@
 #!/usr/bin/env python3
 """
 PreToolUse / PreToolExecution Hook Handler Script for Google Antigravity & Gemini CLI.
-Interprets file write tool calls via stdin and silently strips all non-ASCII, non-printable
-characters from newly inserted file content fields (ReplacementContent, CodeContent, content, code)
-before writing, while preserving TargetContent as-is so string matching in replace operations doesn't break.
+Interprets file write tool calls via stdin.
 
-Implements Fail-Closed behavior (returns decision: deny on parsing error or invalid arguments)
-and robust argument extraction scoped specifically to file write tool calls.
+Enforces strict Fail-Closed behavior:
+If ANY non-ASCII or non-printable character is detected in inserted content fields
+(ReplacementContent, CodeContent, content, code, etc.), the hook DENIES (blocks) the tool execution.
+This guarantees that file writes containing icons/emojis cannot succeed, regardless of whether
+the runner supports argument mutation.
 """
 
 import json
 import sys
 
 
-def strip_non_ascii_printable(text: str) -> str:
+def find_non_ascii(val, key_path="") -> list:
     """
-    Strips non-ASCII and non-printable characters.
-    Preserves printable ASCII (32-126) and standard keyboard whitespace (newline \n, CR \r, tab \t).
+    Recursively scans JSON value to find non-ASCII or non-printable characters.
+    Exempts 'TargetContent' because TargetContent matches existing lines on disk.
     """
-    if not isinstance(text, str):
-        return text
-    return "".join(c for c in text if (32 <= ord(c) <= 126) or c in ("\n", "\r", "\t"))
-
-
-def sanitize_args(args: dict) -> dict:
-    """
-    Recursively scans and sanitizes text payload fields in tool argument dictionary.
-    Exempts 'TargetContent' so existing file line matching in replace operations is preserved.
-    """
-    if not isinstance(args, dict):
-        raise TypeError(f"Expected argument dictionary, got {type(args).__name__}")
-
-    sanitized = {}
-    for key, value in args.items():
-        # DO NOT strip TargetContent - it must match existing lines on disk exactly
-        if key == "TargetContent":
-            sanitized[key] = value
-        elif isinstance(value, str):
-            sanitized[key] = strip_non_ascii_printable(value)
-        elif isinstance(value, list):
-            sanitized_list = []
-            for item in value:
-                if isinstance(item, str):
-                    sanitized_list.append(strip_non_ascii_printable(item))
-                elif isinstance(item, dict):
-                    sanitized_list.append(sanitize_args(item))
-                else:
-                    sanitized_list.append(item)
-            sanitized[key] = sanitized_list
-        elif isinstance(value, dict):
-            sanitized[key] = sanitize_args(value)
-        else:
-            sanitized[key] = value
-    return sanitized
+    violations = []
+    if isinstance(val, str):
+        for idx, char in enumerate(val):
+            code = ord(char)
+            # Allow printable ASCII (32-126) and standard whitespace (\n, \r, \t)
+            if not ((32 <= code <= 126) or char in ("\n", "\r", "\t")):
+                violations.append((key_path, char, f"U+{code:04X}"))
+    elif isinstance(val, dict):
+        for k, v in val.items():
+            if k == "TargetContent":
+                continue
+            sub_path = f"{key_path}.{k}" if key_path else k
+            violations.extend(find_non_ascii(v, sub_path))
+    elif isinstance(val, list):
+        for idx, item in enumerate(val):
+            sub_path = f"{key_path}[{idx}]"
+            violations.extend(find_non_ascii(item, sub_path))
+    return violations
 
 
 def extract_file_write_args(payload: dict) -> dict:
@@ -63,7 +47,6 @@ def extract_file_write_args(payload: dict) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("Payload must be a JSON dictionary.")
 
-    # Candidate containers for tool call objects
     containers = [
         payload.get("tool_call"),
         payload.get("toolCall"),
@@ -78,7 +61,6 @@ def extract_file_write_args(payload: dict) -> dict:
                 if isinstance(val, dict):
                     return val
 
-    # Fallback: payload itself is a flat dictionary containing known file write keys
     file_write_keys = {"TargetFile", "CodeContent", "ReplacementContent", "ReplacementChunks", "path", "content", "code"}
     if any(k in payload for k in file_write_keys):
         return payload
@@ -94,19 +76,21 @@ def main():
 
         payload = json.loads(raw_input)
         args = extract_file_write_args(payload)
-        sanitized_args = sanitize_args(args)
 
-        response = {
-            "decision": "allow",
-            "tool_input": sanitized_args,
-            "tool_call": {
-                "args": sanitized_args
-            },
-            "hookSpecificOutput": {
-                "tool_input": sanitized_args
-            }
-        }
-        print(json.dumps(response))
+        # Scan for non-ASCII / icon violations
+        violations = find_non_ascii(args)
+        if violations:
+            sample_summary = ", ".join(f"'{c}' ({code}) at {path}" for path, c, code in violations[:5])
+            msg = f"PreToolUse Security Block: Non-ASCII/icon characters detected in file write payload ({sample_summary}). All file write content must be strictly ASCII."
+            sys.stderr.write(f"strip_ascii block: {msg}\n")
+            print(json.dumps({
+                "decision": "deny",
+                "reason": msg
+            }))
+            return
+
+        # If clean, allow execution
+        print(json.dumps({"decision": "allow"}))
 
     except Exception as e:
         # Fail-closed (deny) to prevent un-sanitized writes on error
@@ -120,4 +104,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 

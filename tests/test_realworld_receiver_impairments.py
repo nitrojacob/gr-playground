@@ -28,6 +28,7 @@ def test_realworld_receiver_low_snr_and_adjacent_channel_interference():
     Test wideband scanning under realistic low SNR (5 dB), strong DC offset, 
     and strong adjacent channel interference (+300 kHz away).
     """
+    np.random.seed(42)
     sample_rate = 2.4e6
     t = np.linspace(0, 0.02, 48000, endpoint=False)
 

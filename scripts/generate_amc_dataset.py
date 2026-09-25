@@ -40,30 +40,39 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
         iq = (np.random.randn(num_samples) + 1j * np.random.randn(num_samples)) / np.sqrt(2.0)
         return iq.astype(np.complex64)
 
-    elif mod_type in ["AM", "FM"]:
+    elif mod_type in ["AM", "AM-DSB-WC", "AM-DSB-SC", "AM-SSB-WC", "AM-SSB-SC", "FM"]:
         t = np.arange(num_samples)
-        # Message signal (mix of single-tone sinusoidal FM and multi-tone audio)
         if np.random.rand() > 0.5:
             f_m = np.random.uniform(0.001, 0.015)
             audio = np.sin(2 * np.pi * f_m * t)
         else:
             audio = 0.6 * np.sin(2 * np.pi * 0.005 * t) + 0.4 * np.sin(2 * np.pi * 0.012 * t)
 
-        if mod_type == "AM":
-            # AM DSB-FC: s(t) = (1 + m*a(t)) * exp(j0)
+        if mod_type in ["AM", "AM-DSB-WC"]:
             m_depth = np.random.uniform(0.5, 0.95)
             iq = (1.0 + m_depth * audio) + 1j * 0.0
+        elif mod_type == "AM-DSB-SC":
+            iq = audio + 1j * 0.0
+        elif mod_type == "AM-SSB-WC":
+            m_depth = np.random.uniform(0.5, 0.95)
+            audio_hilbert = np.imag(signal.hilbert(audio))
+            iq = (1.0 + m_depth * audio) + 1j * (m_depth * audio_hilbert)
+        elif mod_type == "AM-SSB-SC":
+            audio_hilbert = np.imag(signal.hilbert(audio))
+            iq = audio + 1j * audio_hilbert
         else: # FM
-            # FM: s(t) = exp(j * 2pi * dev * int(a(t)))
             freq_dev = np.random.uniform(0.005, 0.25)
             phase = 2 * np.pi * freq_dev * np.cumsum(audio)
             iq = np.exp(1j * phase)
 
-    elif mod_type == "ASK":
-        bits = np.random.choice([0, 1], size=num_symbols)
-        symbols = bits.astype(np.float32)
-        symbols = np.repeat(symbols, sps)[:num_samples]
-        iq = symbols + 1j * 0.0
+    elif mod_type in ["ASK", "OOK", "4ASK", "8ASK"]:
+        if mod_type in ["ASK", "OOK"]:
+            symbols = np.random.choice([0.0, 1.0], size=num_symbols)
+        elif mod_type == "4ASK":
+            symbols = np.random.choice([-3.0, -1.0, 1.0, 3.0], size=num_symbols)
+        else: # 8ASK
+            symbols = np.random.choice([-7.0, -5.0, -3.0, -1.0, 1.0, 3.0, 5.0, 7.0], size=num_symbols)
+        iq = np.repeat(symbols, sps)[:num_samples] + 1j * 0.0
 
     elif mod_type == "BPSK":
         bits = np.random.choice([0, 1], size=num_symbols)
@@ -84,60 +93,84 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
         sym_q = (2.0 * bits_q - 1.0) / np.sqrt(2.0)
         iq_i = np.repeat(sym_i, sps)[:num_samples]
         iq_q = np.repeat(sym_q, sps)[:num_samples]
-        # Shift Q channel by half symbol period (sps // 2)
         offset = max(1, sps // 2)
         iq_q = np.roll(iq_q, offset)
         iq = iq_i + 1j * iq_q
 
-    elif mod_type == "8PSK":
-        phases = (2 * np.pi / 8.0) * np.random.randint(0, 8, size=num_symbols)
+    elif mod_type in ["8PSK", "16PSK", "32PSK"]:
+        m_order = 8 if mod_type == "8PSK" else (16 if mod_type == "16PSK" else 32)
+        phases = (2 * np.pi / float(m_order)) * np.random.randint(0, m_order, size=num_symbols)
         symbols = np.exp(1j * phases)
         iq = np.repeat(symbols, sps)[:num_samples]
 
-    elif mod_type in ["16QAM", "64QAM", "256QAM"]:
-        m_order = 16 if mod_type == "16QAM" else (64 if mod_type == "64QAM" else 256)
-        side = int(np.sqrt(m_order))
-        grid = np.linspace(-(side - 1), side - 1, side)
-        i_syms = np.random.choice(grid, size=num_symbols)
-        q_syms = np.random.choice(grid, size=num_symbols)
-        symbols = i_syms + 1j * q_syms
-        p_avg = np.mean(np.abs(symbols)**2)
-        symbols = symbols / np.sqrt(p_avg)
-        iq = np.repeat(symbols, sps)[:num_samples]
+    elif mod_type in ["16QAM", "32QAM", "64QAM", "128QAM", "256QAM"]:
+        if mod_type == "16QAM":
+            grid = np.array([-3, -1, 1, 3])
+            constellation = (grid[:, None] + 1j * grid[None, :]).ravel()
+        elif mod_type == "32QAM":
+            grid = np.array([-5, -3, -1, 1, 3, 5])
+            c_square = (grid[:, None] + 1j * grid[None, :]).ravel()
+            # Remove 4 outer corners
+            constellation = np.array([p for p in c_square if abs(p.real) + abs(p.imag) <= 8])
+        elif mod_type == "64QAM":
+            grid = np.array([-7, -5, -3, -1, 1, 3, 5, 7])
+            constellation = (grid[:, None] + 1j * grid[None, :]).ravel()
+        elif mod_type == "128QAM":
+            grid = np.array([-11, -9, -7, -5, -3, -1, 1, 3, 5, 7, 9, 11])
+            c_square = (grid[:, None] + 1j * grid[None, :]).ravel()
+            constellation = np.array([p for p in c_square if abs(p.real) + abs(p.imag) <= 16])
+        else: # 256QAM
+            grid = np.linspace(-15, 15, 16)
+            constellation = (grid[:, None] + 1j * grid[None, :]).ravel()
 
-    elif mod_type == "16APSK":
-        # 16APSK: Ring 1 (4 points r1), Ring 2 (12 points r2)
-        r1, r2 = 1.0, 2.6
-        n1, n2 = 4, 12
-        p1 = np.exp(1j * (2 * np.pi / n1 * np.arange(n1) + np.pi/4)) * r1
-        p2 = np.exp(1j * (2 * np.pi / n2 * np.arange(n2))) * r2
-        constellation = np.concatenate([p1, p2])
+        constellation = constellation / np.sqrt(np.mean(np.abs(constellation)**2))
+        syms = np.random.choice(constellation, size=num_symbols)
+        iq = np.repeat(syms, sps)[:num_samples]
+
+    elif mod_type in ["16APSK", "32APSK", "64APSK", "128APSK"]:
+        if mod_type == "16APSK":
+            r1, r2 = 1.0, 2.6
+            p1 = np.exp(1j * (2 * np.pi / 4 * np.arange(4) + np.pi/4)) * r1
+            p2 = np.exp(1j * (2 * np.pi / 12 * np.arange(12))) * r2
+            constellation = np.concatenate([p1, p2])
+        elif mod_type == "32APSK":
+            r1, r2, r3 = 1.0, 2.54, 4.33
+            p1 = np.exp(1j * (2 * np.pi / 4 * np.arange(4) + np.pi/4)) * r1
+            p2 = np.exp(1j * (2 * np.pi / 12 * np.arange(12))) * r2
+            p3 = np.exp(1j * (2 * np.pi / 16 * np.arange(16) + np.pi/16)) * r3
+            constellation = np.concatenate([p1, p2, p3])
+        elif mod_type == "64APSK":
+            r1, r2, r3, r4 = 1.0, 2.2, 3.6, 5.0
+            p1 = np.exp(1j * (2 * np.pi / 4 * np.arange(4) + np.pi/4)) * r1
+            p2 = np.exp(1j * (2 * np.pi / 12 * np.arange(12))) * r2
+            p3 = np.exp(1j * (2 * np.pi / 20 * np.arange(20))) * r3
+            p4 = np.exp(1j * (2 * np.pi / 28 * np.arange(28))) * r4
+            constellation = np.concatenate([p1, p2, p3, p4])
+        else: # 128APSK
+            r1, r2, r3, r4 = 1.0, 2.0, 3.4, 4.8
+            p1 = np.exp(1j * (2 * np.pi / 8 * np.arange(8))) * r1
+            p2 = np.exp(1j * (2 * np.pi / 16 * np.arange(16))) * r2
+            p3 = np.exp(1j * (2 * np.pi / 40 * np.arange(40))) * r3
+            p4 = np.exp(1j * (2 * np.pi / 64 * np.arange(64))) * r4
+            constellation = np.concatenate([p1, p2, p3, p4])
+
         constellation /= np.sqrt(np.mean(np.abs(constellation)**2))
         syms = np.random.choice(constellation, size=num_symbols)
         iq = np.repeat(syms, sps)[:num_samples]
 
-    elif mod_type == "32APSK":
-        # 32APSK: Ring 1 (4 points r1), Ring 2 (12 points r2), Ring 3 (16 points r3)
-        r1, r2, r3 = 1.0, 2.54, 4.33
-        n1, n2, n3 = 4, 12, 16
-        p1 = np.exp(1j * (2 * np.pi / n1 * np.arange(n1) + np.pi/4)) * r1
-        p2 = np.exp(1j * (2 * np.pi / n2 * np.arange(n2))) * r2
-        p3 = np.exp(1j * (2 * np.pi / n3 * np.arange(n3) + np.pi/16)) * r3
-        constellation = np.concatenate([p1, p2, p3])
-        constellation /= np.sqrt(np.mean(np.abs(constellation)**2))
-        syms = np.random.choice(constellation, size=num_symbols)
-        iq = np.repeat(syms, sps)[:num_samples]
-
-    elif mod_type == "GFSK":
+    elif mod_type in ["GFSK", "CPFSK"]:
         bits = np.random.choice([0, 1], size=num_symbols)
         nrz = 2.0 * bits - 1.0
         upsampled = np.repeat(nrz, sps)
-        # Gaussian pulse filter
-        t_g = np.linspace(-2, 2, 4 * sps)
-        h_g = np.exp(-t_g**2 / (2 * 0.5**2))
-        h_g /= np.sum(h_g)
-        filtered = np.convolve(upsampled, h_g, mode='same')[:num_samples]
-        phase = np.pi * 0.5 * np.cumsum(filtered) / sps
+        if mod_type == "GFSK":
+            t_g = np.linspace(-2, 2, 4 * sps)
+            h_g = np.exp(-t_g**2 / (2 * 0.5**2))
+            h_g /= np.sum(h_g)
+            filtered = np.convolve(upsampled, h_g, mode='same')[:num_samples]
+        else: # CPFSK
+            filtered = upsampled[:num_samples]
+        h_mod = 0.5 if mod_type == "GFSK" else 0.75
+        phase = np.pi * h_mod * np.cumsum(filtered) / sps
         iq = np.exp(1j * phase)
 
     elif mod_type in ["OFDM", "SC-FDMA"]:
@@ -150,7 +183,6 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
             subcarriers = np.zeros(n_fft, dtype=np.complex64)
             data_syms = (np.random.choice([-1, 1], size=n_used) + 1j * np.random.choice([-1, 1], size=n_used)) / np.sqrt(2)
             if mod_type == "SC-FDMA":
-                # DFT precoding across used subcarriers
                 data_syms = np.fft.fft(data_syms) / np.sqrt(n_used)
             subcarriers[1:n_used+1] = data_syms
             time_domain = np.fft.ifft(subcarriers) * np.sqrt(n_fft)

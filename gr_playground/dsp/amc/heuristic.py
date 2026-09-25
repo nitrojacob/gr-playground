@@ -14,6 +14,8 @@ from gr_playground.dsp.amc.common import (
     slice_sequence
 )
 
+from gr_playground.dsp.amc import MODULATION_CLASSES
+
 class HeuristicAMCClassifier(BaseAMCClassifier):
     """
     Multi-class decision tree using higher-order cumulants and envelope features.
@@ -41,24 +43,7 @@ class HeuristicAMCClassifier(BaseAMCClassifier):
 
         is_noise = squelch_check(samples)
 
-        scores = {
-            "AM": 0.05,
-            "FM": 0.05,
-            "BPSK": 0.05,
-            "GFSK": 0.05,
-            "QPSK": 0.05,
-            "8PSK": 0.05,
-            "16QAM": 0.05,
-            "64QAM": 0.05,
-            "256QAM": 0.05,
-            "ASK": 0.05,
-            "16APSK": 0.05,
-            "32APSK": 0.05,
-            "OQPSK": 0.05,
-            "OFDM": 0.05,
-            "SC-FDMA": 0.05,
-            "Noise": 0.05
-        }
+        scores = {mod: 0.01 for mod in MODULATION_CLASSES}
 
         amp_var = features["amp_var"]
         c20 = cumulants["C20"]
@@ -116,6 +101,22 @@ class HeuristicAMCClassifier(BaseAMCClassifier):
                 scores["FM"] += 0.85
             else:
                 scores["QPSK"] += 0.85
+
+        # Propagate parent scores to granular RadioML subclasses
+        scores["AM-DSB-WC"] += scores["AM"] * 0.4
+        scores["AM-SSB-WC"] += scores["AM"] * 0.3
+        scores["AM-SSB-SC"] += scores["AM"] * 0.15
+        scores["AM-DSB-SC"] += scores["AM"] * 0.15
+        scores["OOK"] += scores["ASK"] * 0.4
+        scores["4ASK"] += scores["ASK"] * 0.3
+        scores["8ASK"] += scores["ASK"] * 0.3
+        scores["CPFSK"] += scores["GFSK"] * 0.4
+        scores["16PSK"] += scores["8PSK"] * 0.3
+        scores["32PSK"] += scores["8PSK"] * 0.2
+        scores["32QAM"] += scores["16QAM"] * 0.4
+        scores["128QAM"] += scores["64QAM"] * 0.4
+        scores["64APSK"] += scores["32APSK"] * 0.4
+        scores["128APSK"] += scores["32APSK"] * 0.4
 
         # Normalize to sum to 1.0
         total_score = sum(scores.values())

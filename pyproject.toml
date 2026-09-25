@@ -21,3 +21,6 @@ dependencies = [
 [tool.pytest.ini_options]
 addopts = "-v --tb=short"
 testpaths = ["tests"]
+markers = [
+    "next_level: Fine-grained RadioML 24 modulation schemes test suite"
+]
