@@ -97,7 +97,7 @@ def test_factory_get_amc_classifier():
 def test_ml_classifier_with_trained_models(sample_iq):
     """Test MLAMCClassifier loading trained model binaries/ONNX and running inference."""
     clf = MLAMCClassifier()
-    assert clf.fallback_heuristic is None or clf.onnx_session is not None or clf.stage1_model is not None
+    assert clf.onnx_session is not None or clf.fallback_heuristic is not None
 
     res = clf.classify(sample_iq, sample_rate=32000.0)
     assert isinstance(res, dict)

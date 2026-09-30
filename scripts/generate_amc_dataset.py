@@ -50,8 +50,7 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
 
         if mod_type in ["AM", "AM-DSB-WC"]:
             m_depth = np.random.uniform(0.5, 0.95)
-            audio_hilbert = np.imag(signal.hilbert(audio))
-            iq = (1.0 + m_depth * audio) + 1j * (m_depth * audio_hilbert)
+            iq = (1.0 + m_depth * audio) + 1j * 0.0
         elif mod_type == "AM-DSB-SC":
             iq = audio + 1j * 0.0
         elif mod_type == "AM-SSB-WC":

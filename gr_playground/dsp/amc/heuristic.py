@@ -58,26 +58,30 @@ class HeuristicAMCClassifier(BaseAMCClassifier):
             else:
                 scores["SC-FDMA"] += 0.85
                 scores["OFDM"] += 0.30
-        elif freq_var < 0.08 and c20 >= 0.60 and amp_kurt >= 2.5 and c40 < 0.50:
+        elif freq_var < 0.08 and c20 >= 0.60 and amp_kurt >= 2.5 and amp_var < 0.18 and c40 < 0.50:
             # Amplitude Modulation (AM)
             scores["AM"] += 0.85
         elif 0.05 <= amp_var < 0.15 and c40 < 0.25 and c20 < 0.30:
             # 8-PSK
             scores["8PSK"] += 0.85
             scores["QPSK"] += 0.30
-        elif amp_var < 0.20 and c20 < 0.35 and c40 < 0.40:
-            # Constant Envelope schemes: FM vs GFSK
-            if freq_var > 0.45:
+        elif amp_var < 0.20 and freq_var > 0.0005 and c20 < 0.50 and c40 < 0.35:
+            # Constant Envelope Frequency Modulations: FM vs GFSK
+            if freq_var > 0.35:
                 scores["GFSK"] += 0.85
                 scores["FM"] += 0.30
             else:
                 scores["FM"] += 0.85
                 scores["GFSK"] += 0.30
         elif c20 >= 0.60 and c40 >= 0.70:
-            # BPSK vs ASK
+            # BPSK vs ASK vs AM
             if amp_var >= 0.18:
-                scores["ASK"] += 1.00
-                scores["AM"] += 0.05
+                if zero_ratio >= 0.15 or amp_kurt < 2.0:
+                    scores["ASK"] += 1.00
+                    scores["AM"] += 0.05
+                else:
+                    scores["AM"] += 1.00
+                    scores["ASK"] += 0.10
             else:
                 scores["BPSK"] += 0.85
                 scores["QPSK"] += 0.10
@@ -85,12 +89,12 @@ class HeuristicAMCClassifier(BaseAMCClassifier):
             # Amplitude Shift Keying (ASK / OOK)
             scores["ASK"] += 1.00
             scores["AM"] += 0.05
-        elif c20 < 0.35 and c40 >= 0.40:
+        elif c20 < 0.35:
             # Digital Quadrature Modulations: QPSK vs 16-QAM vs 64-QAM
             if amp_var < 0.10:
                 scores["QPSK"] += 0.85
                 scores["16QAM"] += 0.30
-            elif amp_var < 0.18:
+            elif amp_var < 0.22:
                 scores["16QAM"] += 0.85
                 scores["64QAM"] += 0.30
             else:

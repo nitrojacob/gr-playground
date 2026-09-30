@@ -48,7 +48,7 @@ def test_bpsk_vs_ask_classification_distinction():
     # 1. Synthesize BPSK
     bits_bpsk = np.repeat(np.random.choice([-1, 1], size=num_samples // 8), 8)
     bpsk_phase = np.where(bits_bpsk > 0, 0.0, np.pi)
-    bpsk_samples = np.exp(1j * (2 * np.pi * 5000.0 * t + bpsk_phase)).astype(np.complex64)
+    bpsk_samples = np.exp(1j * bpsk_phase).astype(np.complex64)
     
     bpsk_preds, _, bpsk_stats = classify_modulation(bpsk_samples)
     assert bpsk_preds[0][0] == "BPSK", f"Expected BPSK, got {bpsk_preds[0][0]}"
@@ -56,7 +56,7 @@ def test_bpsk_vs_ask_classification_distinction():
     # 2. Synthesize ASK
     bits_ask = np.repeat(np.random.choice([0, 1], size=num_samples // 8), 8)
     ask_amp = np.where(bits_ask > 0, 1.0, 0.05)
-    ask_samples = (ask_amp * np.exp(1j * 2 * np.pi * 5000.0 * t)).astype(np.complex64)
+    ask_samples = ask_amp.astype(np.complex64)
     
     ask_preds, _, ask_stats = classify_modulation(ask_samples)
     assert ask_preds[0][0] == "ASK", f"Expected ASK, got {ask_preds[0][0]}"

@@ -74,14 +74,14 @@ class CleanupFlowgraph(gr.top_block):
         last_block = self.src
         
         if dc_block_enable:
-            self.dc_blocker = filter.dc_blocker_cc(32, True)
+            self.dc_blocker = filter.dc_blocker_cc(1024, True)
             self.connect(last_block, self.dc_blocker)
             last_block = self.dc_blocker
 
         if cutoff_hz and cutoff_hz < sample_rate / 2.0:
-            safe_cutoff = max(float(cutoff_hz), 100.0)
-            trans_width = max(safe_cutoff * 0.2, 50.0)
-            if safe_cutoff < sample_rate / 2.0:
+            safe_cutoff = min(max(float(cutoff_hz), 100.0), float(sample_rate) * 0.45)
+            trans_width = min(max(safe_cutoff * 0.2, 50.0), (sample_rate / 2.0 - safe_cutoff) * 0.8)
+            if trans_width > 10.0:
                 taps = filter.firdes.low_pass(1.0, sample_rate, safe_cutoff, trans_width)
                 self.lpf = filter.fir_filter_ccc(1, taps)
                 self.connect(last_block, self.lpf)

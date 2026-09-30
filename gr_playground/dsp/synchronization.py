@@ -109,8 +109,12 @@ def synchronize_signal_flowgraph(samples, sample_rate=32000, mod_type="QPSK", sa
     samples = np.asarray(samples, dtype=np.complex64)
     
     # 1. Coarse CFO estimation
-    n_order = 2 if mod_type.upper() == "BPSK" else 4
-    cfo_coarse = estimate_cfo_power_n(samples, sample_rate=sample_rate, n=n_order)
+    if mod_type.upper() in ["FM", "AM"]:
+        from gr_playground.dsp.spectrum import analyze_spectrum
+        cfo_coarse = analyze_spectrum(samples, sample_rate=sample_rate)["estimated_cfo_hz"]
+    else:
+        n_order = 2 if mod_type.upper() == "BPSK" else 4
+        cfo_coarse = estimate_cfo_power_n(samples, sample_rate=sample_rate, n=n_order)
     
     # 2. GNU Radio Flowgraph Execution
     tb = SynchronizationFlowgraph(samples, sample_rate=sample_rate, cfo_coarse_hz=cfo_coarse, mod_type=mod_type, samples_per_symbol=samples_per_symbol)

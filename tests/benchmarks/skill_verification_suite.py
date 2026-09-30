@@ -76,19 +76,18 @@ def run_verification_benchmark(work_dir=None):
             )
             raw_samples = flowgraph.get_samples()
 
-            # 2. Run Step 1: Signal Analysis & Coarse CFO detection
-            analysis = analyze_spectrum(raw_samples, sample_rate=32000)
-            coarse_cfo = analysis["estimated_cfo_hz"]
-
             # 3. Run Step 2: Signal Cleanup (GNU Radio Blocks)
-            cleaned = cleanup_signal_flowgraph(raw_samples, sample_rate=32000, cutoff_hz=8000.0)
+            cleaned = cleanup_signal_flowgraph(raw_samples, sample_rate=32000, cutoff_hz=15000.0, agc_enable=False)
+            proc_samples = cleaned[1500:] if len(cleaned) > 3000 else cleaned
 
             # Derotate by coarse CFO before modulation classification
+            analysis = analyze_spectrum(proc_samples, sample_rate=32000)
+            coarse_cfo = analysis["estimated_cfo_hz"]
             if abs(coarse_cfo) > 10.0:
-                t = np.arange(len(cleaned)) / 32000.0
-                cfo_corrected = cleaned * np.exp(-1j * 2 * np.pi * coarse_cfo * t)
+                t = np.arange(len(proc_samples)) / 32000.0
+                cfo_corrected = proc_samples * np.exp(-1j * 2 * np.pi * coarse_cfo * t)
             else:
-                cfo_corrected = cleaned
+                cfo_corrected = proc_samples
 
             # 4. Run Step 3: Modulation Recognition (ML AMC Classifier)
             preds, cumulants, const_stats = classify_modulation(cfo_corrected)

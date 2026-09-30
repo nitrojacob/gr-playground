@@ -77,7 +77,7 @@ class MLAMCClassifier(BaseAMCClassifier):
 
                 ml_raw = {MODULATION_CLASSES[i]: float(probs[i]) for i in range(min(len(probs), len(MODULATION_CLASSES)))}
                 
-                # Aggregate granular subclass probabilities onto parent classes
+                # Propagate granular subclass probabilities onto parent classes
                 res_dict = {}
                 for c, p in ml_raw.items():
                     parent = RADIOML_TO_PARENT_MAP.get(c, c)
@@ -90,17 +90,7 @@ class MLAMCClassifier(BaseAMCClassifier):
                 tot = sum(res_dict.values())
                 if tot > 0:
                     res_dict = {k: v / tot for k, v in res_dict.items()}
-
-                # Ensemble blend with HeuristicAMCClassifier (35% ONNX ML + 65% Physical Heuristics)
-                h_probs = HeuristicAMCClassifier().classify(y, sample_rate)
-                blended = {}
-                for c in MODULATION_CLASSES:
-                    blended[c] = 0.35 * res_dict.get(c, 0.0) + 0.65 * h_probs.get(c, 0.0)
-
-                tot_b = sum(blended.values())
-                if tot_b > 0:
-                    blended = {k: v / tot_b for k, v in blended.items()}
-                return blended
+                return res_dict
             except Exception as e:
                 logger.warning(f"ONNX inference error: {e}. Falling back to Heuristic AMC.")
                 fallback = HeuristicAMCClassifier()
