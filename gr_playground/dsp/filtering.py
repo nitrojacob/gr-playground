@@ -74,7 +74,9 @@ class CleanupFlowgraph(gr.top_block):
         last_block = self.src
         
         if dc_block_enable:
-            self.dc_blocker = filter.dc_blocker_cc(1024, True)
+            # Dynamic dc_len based on sample frame length so short frames (e.g. 1024) don't suffer transient distortion
+            dc_len = min(64, max(16, len(samples) // 32))
+            self.dc_blocker = filter.dc_blocker_cc(dc_len, True)
             self.connect(last_block, self.dc_blocker)
             last_block = self.dc_blocker
 

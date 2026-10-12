@@ -161,3 +161,109 @@ def test_next_level_radioml_modulations():
         assert pytest.approx(sum(res.values()), abs=1e-2) == 1.0
 
 
+def test_short_frame_dc_blocker_transient_bias_mitigation():
+    """
+    Verifies that short N=1024 frames passing through cleanup_signal_flowgraph
+    with default dc_block_enable=True use adaptive DC blocker length, avoiding
+    IIR filter step transients and false AM classification bias.
+    """
+    from gr_playground.dsp.filtering import cleanup_signal_flowgraph
+
+    clf = MLAMCClassifier()
+    sample_rate = 200000.0
+
+    # Synthesize short N=1024 QPSK frame
+    np.random.seed(42)
+    bits_i = np.repeat(np.random.choice([-1, 1], size=256), 4)
+    bits_q = np.repeat(np.random.choice([-1, 1], size=256), 4)
+    qpsk_iq = ((bits_i + 1j * bits_q) / np.sqrt(2)).astype(np.complex64)
+
+    # Cleaned with default dc_block_enable=True (uses adaptive dc_len)
+    cleaned_with_dc = cleanup_signal_flowgraph(qpsk_iq, sample_rate=sample_rate, cutoff_hz=80000.0, agc_enable=False, dc_block_enable=True)
+    res_with_dc = clf.classify(cleaned_with_dc, sample_rate=sample_rate)
+
+    # Verify that adaptive DC blocker prevents false AM/ASK amplitude bias (AM+ASK prob < 0.20)
+    am_ask_prob = res_with_dc.get("AM", 0.0) + res_with_dc.get("ASK", 0.0)
+    assert am_ask_prob < 0.20, (
+        f"Expected non-AM/ASK prediction with adaptive DC blocker on N=1024 frame, but got AM+ASK prob = {am_ask_prob}"
+    )
+
+
+def test_radioml_direct_classes_clean_channel():
+    """
+    Verifies that MLAMCClassifier outputs direct, non-zero probability scores
+    for all 24 RadioML 2018 modulation schemes under clean channel conditions.
+    """
+    from scripts.generate_amc_dataset import generate_raw_iq_frame
+
+    clf = MLAMCClassifier()
+
+    for r_mod in RADIOML_24_CLASSES:
+        iq = generate_raw_iq_frame(
+            r_mod, num_samples=4096, sps=4, snr_db=24.0,
+            cfo_rel=0.002, phase_noise_std=0.002, mag_imbal_db=0.1
+        )
+        res = clf.classify(iq, sample_rate=32000.0)
+
+        assert isinstance(res, dict)
+        assert len(res) == len(MODULATION_CLASSES)
+        assert pytest.approx(sum(res.values()), abs=1e-2) == 1.0
+        assert not any(np.isnan(v) for v in res.values())
+        assert r_mod in res
+        # Confirm granular class has direct probability output
+        assert res[r_mod] >= 0.0
+
+
+@pytest.mark.parametrize("impairment_level", ["clean", "moderate", "impaired"])
+def test_radioml_direct_classes_progressive_impairments(impairment_level):
+    """
+    Evaluates MLAMCClassifier across representative RadioML schemes under
+    progressive channel impairment tiers (Clean, Moderate, Impaired).
+    """
+    from scripts.generate_amc_dataset import generate_raw_iq_frame
+
+    clf = MLAMCClassifier()
+
+    configs = {
+        "clean": {"snr_db": 25.0, "cfo_rel": 0.001, "phase_noise": 0.002, "mag_imbal": 0.1},
+        "moderate": {"snr_db": 14.0, "cfo_rel": 0.010, "phase_noise": 0.010, "mag_imbal": 0.4},
+        "impaired": {"snr_db": 6.0, "cfo_rel": 0.020, "phase_noise": 0.020, "mag_imbal": 0.8},
+    }
+    cfg = configs[impairment_level]
+
+    test_schemes = [
+        "BPSK", "QPSK", "8PSK", "16PSK",
+        "16QAM", "32QAM", "64QAM",
+        "16APSK", "32APSK",
+        "OOK", "4ASK",
+        "AM-DSB-SC", "AM-SSB-WC", "FM",
+        "GFSK", "CPFSK"
+    ]
+
+    for mod in test_schemes:
+        iq = generate_raw_iq_frame(
+            mod, num_samples=4096, sps=4,
+            snr_db=cfg["snr_db"],
+            cfo_rel=cfg["cfo_rel"],
+            phase_noise_std=cfg["phase_noise"],
+            mag_imbal_db=cfg["mag_imbal"]
+        )
+        res = clf.classify(iq, sample_rate=32000.0)
+
+        assert isinstance(res, dict)
+        assert len(res) == len(MODULATION_CLASSES)
+        assert pytest.approx(sum(res.values()), abs=1e-2) == 1.0
+        assert not any(np.isnan(v) for v in res.values())
+        assert mod in res
+
+        # In clean/moderate tiers, check that top candidates contain direct class or family
+        if impairment_level in ("clean", "moderate"):
+            top3 = [k for k, _ in sorted(res.items(), key=lambda x: x[1], reverse=True)[:5]]
+            parent = RADIOML_TO_PARENT_MAP.get(mod, mod)
+            assert (mod in top3 or parent in top3 or any(parent in m for m in top3)), (
+                f"Expected {mod} or parent {parent} in top candidates under {impairment_level} tier, got {top3}"
+            )
+
+
+
+

@@ -38,11 +38,11 @@ class AMCFeatureNet(nn.Module):
         super().__init__()
         self.input_bn = nn.BatchNorm1d(input_dim)
         self.net = nn.Sequential(
-            nn.Linear(input_dim, 128),
-            nn.BatchNorm1d(128),
+            nn.Linear(input_dim, 256),
+            nn.BatchNorm1d(256),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(128, 128),
+            nn.Linear(256, 128),
             nn.BatchNorm1d(128),
             nn.ReLU(),
             nn.Dropout(0.1),
@@ -103,16 +103,34 @@ def generate_training_data(samples_per_class=300):
 
     tasks = []
     for mod_name in MODULATION_CLASSES:
-        parent_mod = RADIOML_TO_PARENT_MAP.get(mod_name, mod_name)
-        target_idx = class_to_idx[parent_mod]
+        # Direct target index for each of the 30 distinct modulation schemes
+        target_idx = class_to_idx[mod_name]
 
         for _ in range(samples_per_class):
-            snr = float(np.random.choice(snrs))
+            tier = np.random.rand()
+            if tier < 0.35:
+                # Clean Channel Tier
+                snr = float(np.random.uniform(18.0, 30.0))
+                cfo_rel = float(np.random.uniform(-0.005, 0.005))
+                phase_noise = float(np.random.uniform(0.0, 0.005))
+                mag_imbal = float(np.random.uniform(0.0, 0.2))
+                phase_imbal = float(np.random.uniform(0.0, 2.0))
+            elif tier < 0.75:
+                # Moderate Impairments Tier
+                snr = float(np.random.uniform(8.0, 18.0))
+                cfo_rel = float(np.random.uniform(-0.015, 0.015))
+                phase_noise = float(np.random.uniform(0.0, 0.015))
+                mag_imbal = float(np.random.uniform(0.0, 0.6))
+                phase_imbal = float(np.random.uniform(0.0, 5.0))
+            else:
+                # Challenging Impairments Tier
+                snr = float(np.random.uniform(-2.0, 8.0))
+                cfo_rel = float(np.random.uniform(-0.025, 0.025))
+                phase_noise = float(np.random.uniform(0.0, 0.025))
+                mag_imbal = float(np.random.uniform(0.0, 1.0))
+                phase_imbal = float(np.random.uniform(0.0, 10.0))
+
             num_samples = int(np.random.choice([2048, 4096, 8192]))
-            cfo_rel = float(np.random.uniform(-0.02, 0.02))
-            phase_noise = float(np.random.uniform(0.0, 0.03))
-            mag_imbal = float(np.random.uniform(0.0, 1.0))
-            phase_imbal = float(np.random.uniform(0.0, 10.0))
             use_simulator = (np.random.rand() < 0.5)
 
             tasks.append((mod_name, target_idx, snr, num_samples, cfo_rel, phase_noise, mag_imbal, phase_imbal, use_simulator))

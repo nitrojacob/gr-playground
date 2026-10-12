@@ -77,19 +77,12 @@ class MLAMCClassifier(BaseAMCClassifier):
 
                 ml_raw = {MODULATION_CLASSES[i]: float(probs[i]) for i in range(min(len(probs), len(MODULATION_CLASSES)))}
                 
-                # Propagate granular subclass probabilities onto parent classes
-                res_dict = {}
-                for c, p in ml_raw.items():
-                    parent = RADIOML_TO_PARENT_MAP.get(c, c)
-                    res_dict[parent] = res_dict.get(parent, 0.0) + p
-
-                for c in MODULATION_CLASSES:
-                    if c not in res_dict:
-                        res_dict[c] = 0.0
-
-                tot = sum(res_dict.values())
+                # Direct 30-class probability distribution without collapsing
+                tot = sum(ml_raw.values())
                 if tot > 0:
-                    res_dict = {k: v / tot for k, v in res_dict.items()}
+                    res_dict = {k: v / tot for k, v in ml_raw.items()}
+                else:
+                    res_dict = ml_raw
                 return res_dict
             except Exception as e:
                 logger.warning(f"ONNX inference error: {e}. Falling back to Heuristic AMC.")
