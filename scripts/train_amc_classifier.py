@@ -90,15 +90,21 @@ def _generate_class_chunk(args):
             mag_imbal = float(np.random.uniform(0.0, 0.2))
             phase_imbal = float(np.random.uniform(0.0, 2.0))
 
-        num_samples = int(np.random.choice([1024, 2048, 4096]))
+        num_samples = int(np.random.choice([1024, 2048]))
+        sps = int(np.random.choice([4, 8]))
+        rrc_alpha = float(np.random.choice([0.25, 0.35, 0.45]))
+        use_rrc = (np.random.rand() < 0.85)
         samples = generate_raw_iq_frame(
             mod_type=mod_name,
             num_samples=num_samples,
+            sps=sps,
             snr_db=snr,
             cfo_rel=cfo_rel,
             phase_noise_std=phase_noise,
             mag_imbal_db=mag_imbal,
-            phase_imbal_deg=phase_imbal
+            phase_imbal_deg=phase_imbal,
+            use_rrc=use_rrc,
+            rrc_alpha=rrc_alpha
         )
         feats[i] = extract_frame_features(samples)
 

@@ -33,7 +33,7 @@ if DEMOD_SCRIPT_DIR not in sys.path:
 from gr_playground.utils.sigmf_io import read_sigmf, write_sigmf
 from gr_playground.dsp.channelizer import scan_wideband_channels, extract_channel_flowgraph
 from gr_playground.dsp.spectrum import analyze_spectrum
-from gr_playground.dsp.filtering import cleanup_signal_flowgraph
+from gr_playground.dsp.filtering import cleanup_signal_flowgraph, gram_schmidt_iq_balance
 from gr_playground.dsp.modulation_id import classify_modulation, compute_higher_order_cumulants, compute_constellation_features
 from gr_playground.dsp.synchronization import synchronize_signal_flowgraph
 from gr_playground.dsp.demodulation import demodulate_signal_flowgraph
@@ -120,7 +120,10 @@ def run_rf_analysis_pipeline(input_path, scan_only=False, channel_index=1, manua
         proc_samples = cleaned_samples[2000:502000] if len(cleaned_samples) > 4000 else cleaned_samples
 
         # Step 5: Automatic Modulation Recognition
-        preds, cumulants, const_stats = classify_modulation(proc_samples)
+        # Evaluate on IQ-balanced extracted samples before FIR filter transients to preserve spectral envelope
+        amc_samples = gram_schmidt_iq_balance(extracted_samples)
+        proc_amc = amc_samples[2000:502000] if len(amc_samples) > 4000 else amc_samples
+        preds, cumulants, const_stats = classify_modulation(proc_amc)
         top_mod, top_conf = preds[0] if preds else ("Unknown", 0.0)
         print(f"🔍 [3/5 Modulation ID] Predicted Modulation: {top_mod} ({top_conf*100:.1f}% confidence)")
 

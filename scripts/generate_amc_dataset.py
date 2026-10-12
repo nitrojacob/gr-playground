@@ -27,14 +27,78 @@ MODULATION_CLASSES = [
 
 CLASS_MAP = {name: idx for idx, name in enumerate(MODULATION_CLASSES)}
 
+_RRC_CACHE = {}
+
+def get_rrc_filter(sps: int = 8, alpha: float = 0.35, span: int = 10) -> np.ndarray:
+    """
+    Cached Root-Raised Cosine (RRC) filter impulse response.
+    """
+    key = (int(sps), round(float(alpha), 3), int(span))
+    if key in _RRC_CACHE:
+        return _RRC_CACHE[key]
+
+    ntaps = span * sps + 1
+    t = np.arange(-span * sps // 2, span * sps // 2 + 1) / float(sps)
+    rrc = np.zeros_like(t, dtype=np.float32)
+    center_idx = len(t) // 2
+    rrc[center_idx] = 1.0 - alpha + (4.0 * alpha / np.pi)
+
+    denom = 1.0 - (4.0 * alpha * t)**2
+    near_sing = np.abs(denom) < 1e-5
+    for idx in np.where(near_sing)[0]:
+        if idx != center_idx:
+            rrc[idx] = (alpha / np.sqrt(2.0)) * (
+                (1.0 + 2.0 / np.pi) * np.sin(np.pi / (4.0 * alpha)) +
+                (1.0 - 2.0 / np.pi) * np.cos(np.pi / (4.0 * alpha))
+            )
+
+    regular = ~near_sing
+    regular[center_idx] = False
+    ti = t[regular]
+    rrc[regular] = (
+        np.sin(np.pi * ti * (1.0 - alpha)) +
+        4.0 * alpha * ti * np.cos(np.pi * ti * (1.0 + alpha))
+    ) / (np.pi * ti * denom[regular])
+
+    rrc /= np.sqrt(np.sum(rrc**2))
+    _RRC_CACHE[key] = rrc.astype(np.float32)
+    return _RRC_CACHE[key]
+
+
+def _shape_symbols_iq(symbols: np.ndarray, sps: int, num_samples: int,
+                      use_rrc: bool = True, alpha: float = 0.35) -> np.ndarray:
+    """
+    Convert symbol stream to continuous-time IQ sample frame.
+    Supports Root-Raised Cosine (RRC) pulse shaping (standard in RadioML 2018)
+    as well as rectangular boxcar pulse shaping.
+    """
+    if use_rrc and sps > 1:
+        rrc = get_rrc_filter(sps=sps, alpha=alpha, span=10)
+        upsampled = np.zeros(len(symbols) * sps, dtype=np.complex64)
+        upsampled[::sps] = symbols
+        filtered = signal.fftconvolve(upsampled, rrc, mode='same')
+        start_idx = (len(filtered) - num_samples) // 2 if len(filtered) > num_samples else 0
+        iq = filtered[start_idx : start_idx + num_samples]
+        if len(iq) < num_samples:
+            iq = np.pad(iq, (0, num_samples - len(iq)), mode='wrap')
+        return iq.astype(np.complex64)
+    else:
+        return (np.repeat(symbols, sps)[:num_samples]).astype(np.complex64)
+
+
 def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
                           snr_db: float = 20.0, cfo_rel: float = 0.0,
                           phase_noise_std: float = 0.0, mag_imbal_db: float = 0.0,
-                          phase_imbal_deg: float = 0.0) -> np.ndarray:
+                          phase_imbal_deg: float = 0.0, use_rrc: bool = None,
+                          rrc_alpha: float = 0.35) -> np.ndarray:
     """
     Synthesize a single raw complex64 IQ frame (length num_samples) for a target modulation scheme.
     """
-    num_symbols = int(np.ceil(num_samples / sps)) + 10
+    num_symbols = int(np.ceil(num_samples / sps)) + 24
+    if use_rrc is None:
+        do_rrc = (np.random.rand() < 0.85)
+    else:
+        do_rrc = use_rrc
 
     if mod_type == "Noise":
         iq = (np.random.randn(num_samples) + 1j * np.random.randn(num_samples)) / np.sqrt(2.0)
@@ -72,36 +136,37 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
             symbols = np.random.choice([-3.0, -1.0, 1.0, 3.0], size=num_symbols)
         else: # 8ASK
             symbols = np.random.choice([-7.0, -5.0, -3.0, -1.0, 1.0, 3.0, 5.0, 7.0], size=num_symbols)
-        iq = np.repeat(symbols, sps)[:num_samples] + 1j * 0.0
+        iq = _shape_symbols_iq(symbols + 1j * 0.0, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
 
     elif mod_type == "BPSK":
         bits = np.random.choice([0, 1], size=num_symbols)
         symbols = 2.0 * bits - 1.0
-        iq = np.repeat(symbols, sps)[:num_samples] + 1j * 0.0
+        iq = _shape_symbols_iq(symbols + 1j * 0.0, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
 
     elif mod_type == "QPSK":
         bits_i = np.random.choice([0, 1], size=num_symbols)
         bits_q = np.random.choice([0, 1], size=num_symbols)
         sym_i = (2.0 * bits_i - 1.0) / np.sqrt(2.0)
         sym_q = (2.0 * bits_q - 1.0) / np.sqrt(2.0)
-        iq = np.repeat(sym_i + 1j * sym_q, sps)[:num_samples]
+        symbols = sym_i + 1j * sym_q
+        iq = _shape_symbols_iq(symbols, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
 
     elif mod_type == "OQPSK":
         bits_i = np.random.choice([0, 1], size=num_symbols)
         bits_q = np.random.choice([0, 1], size=num_symbols)
         sym_i = (2.0 * bits_i - 1.0) / np.sqrt(2.0)
         sym_q = (2.0 * bits_q - 1.0) / np.sqrt(2.0)
-        iq_i = np.repeat(sym_i, sps)[:num_samples]
-        iq_q = np.repeat(sym_q, sps)[:num_samples]
+        iq_i = _shape_symbols_iq(sym_i + 1j * 0.0, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
+        iq_q = _shape_symbols_iq(sym_q + 1j * 0.0, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
         offset = max(1, sps // 2)
         iq_q = np.roll(iq_q, offset)
-        iq = iq_i + 1j * iq_q
+        iq = iq_i.real + 1j * iq_q.real
 
     elif mod_type in ["8PSK", "16PSK", "32PSK"]:
         m_order = 8 if mod_type == "8PSK" else (16 if mod_type == "16PSK" else 32)
         phases = (2 * np.pi / float(m_order)) * np.random.randint(0, m_order, size=num_symbols)
         symbols = np.exp(1j * phases)
-        iq = np.repeat(symbols, sps)[:num_samples]
+        iq = _shape_symbols_iq(symbols, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
 
     elif mod_type in ["16QAM", "32QAM", "64QAM", "128QAM", "256QAM"]:
         if mod_type == "16QAM":
@@ -110,7 +175,6 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
         elif mod_type == "32QAM":
             grid = np.array([-5, -3, -1, 1, 3, 5])
             c_square = (grid[:, None] + 1j * grid[None, :]).ravel()
-            # Remove 4 outer corners
             constellation = np.array([p for p in c_square if abs(p.real) + abs(p.imag) <= 8])
         elif mod_type == "64QAM":
             grid = np.array([-7, -5, -3, -1, 1, 3, 5, 7])
@@ -125,7 +189,7 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
 
         constellation = constellation / np.sqrt(np.mean(np.abs(constellation)**2))
         syms = np.random.choice(constellation, size=num_symbols)
-        iq = np.repeat(syms, sps)[:num_samples]
+        iq = _shape_symbols_iq(syms, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
 
     elif mod_type in ["16APSK", "32APSK", "64APSK", "128APSK"]:
         if mod_type == "16APSK":
@@ -156,7 +220,7 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
 
         constellation /= np.sqrt(np.mean(np.abs(constellation)**2))
         syms = np.random.choice(constellation, size=num_symbols)
-        iq = np.repeat(syms, sps)[:num_samples]
+        iq = _shape_symbols_iq(syms, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
 
     elif mod_type in ["GFSK", "CPFSK"]:
         bits = np.random.choice([0, 1], size=num_symbols)
