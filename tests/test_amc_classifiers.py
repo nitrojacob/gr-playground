@@ -32,14 +32,14 @@ def sample_iq():
     return (iq + noise).astype(np.complex64)
 
 def test_feature_extractors(sample_iq):
-    """Test 26-element frame feature extractor and sequence feature extractor."""
+    """Test 32-element frame feature extractor and sequence feature extractor."""
     frame_feats = extract_frame_features(sample_iq[:2048])
     assert isinstance(frame_feats, np.ndarray)
-    assert frame_feats.shape == (26,)
+    assert frame_feats.shape == (32,)
     assert frame_feats.dtype == np.float32
     assert not np.isnan(frame_feats).any()
     assert not np.isinf(frame_feats).any()
-    assert len(FEATURE_NAMES) == 26
+    assert len(FEATURE_NAMES) == 32
 
     # Test sequence feature extractor
     fake_probs = np.random.uniform(size=(10, len(MODULATION_CLASSES))).astype(np.float32)

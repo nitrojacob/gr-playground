@@ -1,6 +1,6 @@
 """
 Physical Feature Vector Extraction for Machine Learning AMC.
-Extracts a 26-element frame feature vector and a 21-element sequence feature vector.
+Extracts a 32-element frame feature vector and a 21-element sequence feature vector.
 """
 
 import numpy as np
@@ -16,22 +16,23 @@ FEATURE_NAMES = [
     "spectral_flatness", "spectral_kurtosis", "papr_db", "psd_asymmetry",
     "fft2_p2a", "fft4_p2a", "mean_mag", "max_mag",
     "c20_derot2", "c40_derot2", "c20_derot4", "c40_derot4",
-    "inst_freq_skewness", "amp_skewness", "snr_m2m4_db", "psd_peak_ratio"
+    "inst_freq_skewness", "amp_skewness", "snr_m2m4_db", "psd_peak_ratio",
+    "fft8_p2a", "fft16_p2a", "c42_norm", "mag_moment4", "mag_moment6", "iq_energy_ratio"
 ]
 
 def extract_frame_features(samples):
     """
-    Extracts a 26-element float32 feature vector from a single IQ sample frame.
+    Extracts a 32-element float32 feature vector from a single IQ sample frame.
 
     Parameters:
     - samples: 1D complex64 numpy array.
 
     Returns:
-    - 1D numpy array of shape (26,) dtype float32.
+    - 1D numpy array of shape (32,) dtype float32.
     """
     y = np.asarray(samples, dtype=np.complex64)
     if len(y) < 10:
-        return np.zeros(26, dtype=np.float32)
+        return np.zeros(32, dtype=np.float32)
 
     # 1. DC Removal and Power Normalization
     y_dc = y - np.mean(y)
@@ -128,13 +129,26 @@ def extract_frame_features(samples):
 
     psd_peak_ratio = float(np.max(psd_w) / (np.median(psd_w) + 1e-12)) if len(psd_w) > 0 else 1.0
 
+    # 6 Intra-Family Discriminator Features
+    fft8 = np.abs(np.fft.fft(y_norm**8))
+    fft8_p2a = float(np.max(fft8) / (np.mean(fft8) + 1e-12))
+
+    fft16 = np.abs(np.fft.fft(y_norm**16))
+    fft16_p2a = float(np.max(fft16) / (np.mean(fft16) + 1e-12))
+
+    c42_norm = float(c42 / (c21**2 + 1e-12))
+    mag_moment4 = float(np.mean(mag**4))
+    mag_moment6 = float(np.mean(mag**6))
+    iq_energy_ratio = float(np.var(y_norm.imag) / (np.var(y_norm.real) + 1e-12))
+
     feats = np.array([
         c20, c21, c40, c42, c63,
         amp_var, phase_var, freq_var, amp_kurt, zero_ratio,
         spectral_flatness, spectral_kurtosis, papr_db, psd_asymmetry,
         fft2_p2a, fft4_p2a, mean_mag, max_mag,
         c20_derot2, c40_derot2, c20_derot4, c40_derot4,
-        inst_freq_skewness, amp_skewness, snr_m2m4_db, psd_peak_ratio
+        inst_freq_skewness, amp_skewness, snr_m2m4_db, psd_peak_ratio,
+        fft8_p2a, fft16_p2a, c42_norm, mag_moment4, mag_moment6, iq_energy_ratio
     ], dtype=np.float32)
 
     # Sanitize NaNs, Infs, and extreme values
