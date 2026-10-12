@@ -8,7 +8,6 @@ import numpy as np
 import logging
 
 from gr_playground.dsp.amc.base import BaseAMCClassifier
-from gr_playground.dsp.amc.heuristic import HeuristicAMCClassifier
 from gr_playground.dsp.amc.common import squelch_check
 from gr_playground.dsp.amc.features import extract_frame_features
 from gr_playground.dsp.amc import MODULATION_CLASSES, RADIOML_TO_PARENT_MAP
@@ -29,7 +28,6 @@ class MLAMCClassifier(BaseAMCClassifier):
 
         self.model_dir = model_dir
         self.onnx_path = os.path.join(model_dir, "amc_model.onnx")
-        self.fallback_heuristic = None
         self.onnx_session = None
 
         self._load_models()
@@ -43,11 +41,11 @@ class MLAMCClassifier(BaseAMCClassifier):
                 logger.info(f"Loaded ONNX AMC model from {self.onnx_path}")
                 return
             except Exception as e:
-                logger.warning(f"Failed to load ONNX model via onnxruntime: {e}. Falling back to HeuristicAMCClassifier.")
-        
-        # Fallback to HeuristicAMCClassifier if ONNX model is missing or fails to load
-        logger.warning(f"ONNX model artifact not found or unreadable at {self.onnx_path}. Falling back to HeuristicAMCClassifier.")
-        self.fallback_heuristic = HeuristicAMCClassifier()
+                logger.warning(f"Failed to load ONNX model via onnxruntime: {e}")
+                self.onnx_session = None
+        else:
+            logger.warning(f"ONNX model artifact not found or unreadable at {self.onnx_path}")
+            self.onnx_session = None
 
     def classify(self, samples, sample_rate: float = 32000.0) -> dict:
         """
@@ -55,9 +53,7 @@ class MLAMCClassifier(BaseAMCClassifier):
         """
         from gr_playground.dsp.amc import MODULATION_CLASSES
 
-        if self.fallback_heuristic is not None:
-            return self.fallback_heuristic.classify(samples, sample_rate)
-
+        num_classes = len(MODULATION_CLASSES)
         y = np.asarray(samples, dtype=np.complex64)
         if len(y) < 16:
             res = {c: 0.0 for c in MODULATION_CLASSES}
@@ -75,7 +71,7 @@ class MLAMCClassifier(BaseAMCClassifier):
                 exp_logits = np.exp(logits - np.max(logits))
                 probs = exp_logits / (np.sum(exp_logits) + 1e-12)
 
-                ml_raw = {MODULATION_CLASSES[i]: float(probs[i]) for i in range(min(len(probs), len(MODULATION_CLASSES)))}
+                ml_raw = {MODULATION_CLASSES[i]: float(probs[i]) for i in range(min(len(probs), num_classes))}
                 
                 # Direct 30-class probability distribution without collapsing
                 tot = sum(ml_raw.values())
@@ -85,9 +81,8 @@ class MLAMCClassifier(BaseAMCClassifier):
                     res_dict = ml_raw
                 return res_dict
             except Exception as e:
-                logger.warning(f"ONNX inference error: {e}. Falling back to Heuristic AMC.")
-                fallback = HeuristicAMCClassifier()
-                return fallback.classify(samples, sample_rate)
+                logger.warning(f"ONNX inference error: {e}. Returning uniform distribution.")
 
-        fallback = HeuristicAMCClassifier()
-        return fallback.classify(samples, sample_rate)
+        # Fallback to uniform distribution across classes
+        uniform_prob = float(1.0 / max(num_classes, 1))
+        return {c: uniform_prob for c in MODULATION_CLASSES}

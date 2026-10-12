@@ -1,6 +1,6 @@
 """
 Unit Test Suite for Modular Automatic Modulation Classification (AMC) Subsystem.
-Tests HeuristicAMCClassifier, MLAMCClassifier, DLAMCClassifier, Feature Extractors, and Factory.
+Tests MLAMCClassifier, DLAMCClassifier, Feature Extractors, and Factory.
 """
 
 import pytest
@@ -8,7 +8,6 @@ import numpy as np
 
 from gr_playground.dsp.amc import (
     BaseAMCClassifier,
-    HeuristicAMCClassifier,
     MLAMCClassifier,
     DLAMCClassifier,
     get_amc_classifier,
@@ -51,22 +50,10 @@ def test_feature_extractors(sample_iq):
     assert not np.isnan(seq_feats).any()
     assert not np.isinf(seq_feats).any()
 
-def test_heuristic_classifier(sample_iq):
-    """Test HeuristicAMCClassifier interface conformance and output dictionary."""
-    clf = HeuristicAMCClassifier()
-    res = clf.classify(sample_iq, sample_rate=32000.0)
-
-    assert isinstance(res, dict)
-    assert "QPSK" in res
-    assert "16QAM" in res
-    assert "FM" in res
-    assert len(res) == len(MODULATION_CLASSES)
-    assert pytest.approx(sum(res.values()), abs=1e-2) == 1.0
-
 def test_ml_classifier_fallback(sample_iq):
     """Test MLAMCClassifier fallback behavior when model files are not present."""
     clf = MLAMCClassifier(model_dir="/tmp/non_existent_model_dir")
-    assert clf.fallback_heuristic is not None
+    assert clf.onnx_session is None
 
     res = clf.classify(sample_iq, sample_rate=32000.0)
     assert isinstance(res, dict)
@@ -84,20 +71,22 @@ def test_dl_classifier_fallback(sample_iq):
 
 def test_factory_get_amc_classifier():
     """Test factory strategy selector function."""
-    h_clf = get_amc_classifier("heuristic")
-    assert isinstance(h_clf, BaseAMCClassifier)
-    assert isinstance(h_clf, HeuristicAMCClassifier)
-
     m_clf = get_amc_classifier("ml")
     assert isinstance(m_clf, BaseAMCClassifier)
+    assert isinstance(m_clf, MLAMCClassifier)
 
     d_clf = get_amc_classifier("dl")
     assert isinstance(d_clf, BaseAMCClassifier)
+    assert isinstance(d_clf, DLAMCClassifier)
+
+    default_clf = get_amc_classifier("default")
+    assert isinstance(default_clf, BaseAMCClassifier)
+    assert isinstance(default_clf, MLAMCClassifier)
 
 def test_ml_classifier_with_trained_models(sample_iq):
     """Test MLAMCClassifier loading trained model binaries/ONNX and running inference."""
     clf = MLAMCClassifier()
-    assert clf.onnx_session is not None or clf.fallback_heuristic is not None
+    assert clf.onnx_session is not None
 
     res = clf.classify(sample_iq, sample_rate=32000.0)
     assert isinstance(res, dict)

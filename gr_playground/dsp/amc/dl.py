@@ -1,7 +1,7 @@
 """
 Deep Learning AMC Classifier (Blueprint / Template for Future Expansion).
 Supports neural network backends (PyTorch / ONNX / TFLite / ResNet1d / CLDNN).
-Falls back gracefully to MLAMCClassifier or HeuristicAMCClassifier when weights are missing.
+Falls back gracefully to MLAMCClassifier when weights are missing.
 """
 
 import os
@@ -9,7 +9,6 @@ import logging
 import numpy as np
 
 from gr_playground.dsp.amc.base import BaseAMCClassifier
-from gr_playground.dsp.amc.heuristic import HeuristicAMCClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -53,12 +52,12 @@ class DLAMCClassifier(BaseAMCClassifier):
                 # self.dl_model = ort.InferenceSession(self.model_path)
                 logger.info(f"Loaded Deep Learning AMC model from {self.model_path}")
             except Exception as e:
-                logger.warning(f"Failed to initialize DL runtime: {e}. Falling back to ML/Heuristic.")
+                logger.warning(f"Failed to initialize DL runtime: {e}. Falling back to MLAMCClassifier.")
                 self._setup_fallback()
         else:
             logger.info(
                 f"DL model weights not found at {self.model_path}. "
-                "Falling back to ML/Heuristic AMC Classifier."
+                "Falling back to MLAMCClassifier."
             )
             self._setup_fallback()
 
@@ -66,8 +65,9 @@ class DLAMCClassifier(BaseAMCClassifier):
         try:
             from gr_playground.dsp.amc.ml import MLAMCClassifier
             self.fallback_classifier = MLAMCClassifier()
-        except Exception:
-            self.fallback_classifier = HeuristicAMCClassifier()
+        except Exception as e:
+            logger.warning(f"Failed to setup MLAMCClassifier fallback: {e}")
+            self.fallback_classifier = None
 
     def classify(self, samples, sample_rate: float = 32000.0) -> dict:
         """
@@ -82,15 +82,6 @@ class DLAMCClassifier(BaseAMCClassifier):
             res["Noise"] = 1.0
             return res
 
-        # Standard 2-channel IQ format: [1, 2, N] for 1D CNN / ResNet models
-        # i_chan = y.real
-        # q_chan = y.imag
-        # x_input = np.stack([i_chan, q_chan], axis=0)[np.newaxis, :, :]
-
-        # Place DL forward pass here when weights are trained:
-        # outputs = self.dl_model.run(None, {"input": x_input})[0]
-        # probs = scipy.special.softmax(outputs, axis=1)[0]
-        # return {MODULATION_CLASSES[i]: float(probs[i]) for i in range(len(MODULATION_CLASSES))}
-
-        fallback = HeuristicAMCClassifier()
-        return fallback.classify(samples, sample_rate)
+        # Standard uniform fallback if no model is loaded
+        uniform_prob = float(1.0 / len(MODULATION_CLASSES))
+        return {c: uniform_prob for c in MODULATION_CLASSES}

@@ -31,7 +31,6 @@ RADIOML_TO_PARENT_MAP = {
 }
 
 from gr_playground.dsp.amc.base import BaseAMCClassifier
-from gr_playground.dsp.amc.heuristic import HeuristicAMCClassifier
 from gr_playground.dsp.amc.ml import MLAMCClassifier
 from gr_playground.dsp.amc.dl import DLAMCClassifier
 
@@ -40,7 +39,7 @@ def get_amc_classifier(mode: str = "ml", model_dir: str = None) -> BaseAMCClassi
     Factory function for AMC Classifiers.
 
     Parameters:
-    - mode: Strategy mode ("heuristic", "ml", "dl"). Default: "ml".
+    - mode: Strategy mode ("ml", "dl"). Default: "ml".
     - model_dir: Optional path to custom model artifact directory.
 
     Returns:
@@ -52,19 +51,12 @@ def get_amc_classifier(mode: str = "ml", model_dir: str = None) -> BaseAMCClassi
         try:
             return DLAMCClassifier(model_path=model_dir)
         except Exception:
-            mode = "ml"
+            pass
 
-    if mode == "ml":
-        try:
-            return MLAMCClassifier(model_dir=model_dir)
-        except Exception:
-            return HeuristicAMCClassifier()
-
-    return HeuristicAMCClassifier()
+    return MLAMCClassifier(model_dir=model_dir)
 
 __all__ = [
     "BaseAMCClassifier",
-    "HeuristicAMCClassifier",
     "MLAMCClassifier",
     "DLAMCClassifier",
     "get_amc_classifier",

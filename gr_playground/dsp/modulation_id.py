@@ -100,7 +100,7 @@ def apply_physical_dsp_sanity_checks(scores_dict, bandwidth_hz=None, features=No
 def classify_modulation(samples, mode: str = "ml", bandwidth_hz: float = None):
     """
     Multi-class automatic modulation classification.
-    Delegates to the requested AMC Strategy Classifier ("heuristic", "ml", or "dl"). Default: "ml".
+    Delegates to the requested AMC Strategy Classifier ("ml" or "dl"). Default: "ml".
     Optionally accepts bandwidth_hz for physical DSP sanity filtering.
     Returns (predictions_list, cumulants_dict, constellation_stats_dict).
     """
