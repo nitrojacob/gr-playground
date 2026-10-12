@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class MLAMCClassifier(BaseAMCClassifier):
     """
     ML AMC Classifier leveraging ONNX model (`amc_model.onnx`).
-    Reads 32 extracted physical frame features and outputs probability distribution across all MODULATION_CLASSES.
+    Reads 40 extracted physical frame features and outputs probability distribution across all MODULATION_CLASSES.
     """
     def __init__(self, model_dir: str = None):
         if model_dir is None:

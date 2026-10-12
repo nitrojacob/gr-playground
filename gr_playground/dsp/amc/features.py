@@ -1,6 +1,6 @@
 """
 Physical Feature Vector Extraction for Machine Learning AMC.
-Extracts a 32-element frame feature vector and a 21-element sequence feature vector.
+Extracts a 40-element frame feature vector and a 21-element sequence feature vector.
 """
 
 import numpy as np
@@ -17,22 +17,66 @@ FEATURE_NAMES = [
     "fft2_p2a", "fft4_p2a", "mean_mag", "max_mag",
     "c20_derot2", "c40_derot2", "c20_derot4", "c40_derot4",
     "inst_freq_skewness", "amp_skewness", "snr_m2m4_db", "psd_peak_ratio",
-    "fft8_p2a", "fft16_p2a", "c42_norm", "mag_moment4", "mag_moment6", "iq_energy_ratio"
+    "fft8_p2a", "fft16_p2a", "c42_norm", "mag_moment4", "mag_moment6", "iq_energy_ratio",
+    "costas2_err_var", "costas2_c20_real", "costas2_kurt_i",
+    "costas4_err_var", "costas4_c40_real", "costas4_kurt_i", "costas4_kurt_q", "costas4_c42"
 ]
+
+def _run_costas_loop(y_in, order=2, loop_bw=0.06):
+    """
+    Fast discrete-time 2nd-order Costas loop for phase and fine frequency acquisition.
+    Operates on up to 512 samples for high compute efficiency.
+    """
+    y_sub = y_in[:512]
+    N = len(y_sub)
+    if N < 16:
+        return y_sub, 1.0
+
+    alpha = 2.0 * 0.707 * loop_bw
+    beta = loop_bw ** 2
+
+    theta = 0.0
+    omega = 0.0
+    errs = np.empty(N, dtype=np.float32)
+    y_locked = np.empty(N, dtype=np.complex64)
+
+    for i in range(N):
+        rot = np.exp(-1j * theta)
+        ys = y_sub[i] * rot
+        y_locked[i] = ys
+        I = float(ys.real)
+        Q = float(ys.imag)
+        denom = abs(I) + abs(Q) + 1e-6
+
+        if order == 2:
+            e = (1.0 if I >= 0.0 else -1.0) * Q / denom
+        else:
+            s_i = 1.0 if I >= 0.0 else -1.0
+            s_q = 1.0 if Q >= 0.0 else -1.0
+            e = (s_i * Q - s_q * I) / denom
+
+        errs[i] = e
+        omega = max(min(omega + beta * e, 0.2), -0.2)
+        theta += omega + alpha * e
+
+    half = N // 2
+    settled_err = errs[half:]
+    err_var = float(np.var(settled_err)) if len(settled_err) > 0 else 1.0
+    return y_locked, err_var
 
 def extract_frame_features(samples):
     """
-    Extracts a 32-element float32 feature vector from a single IQ sample frame.
+    Extracts a 40-element float32 feature vector from a single IQ sample frame.
 
     Parameters:
     - samples: 1D complex64 numpy array.
 
     Returns:
-    - 1D numpy array of shape (32,) dtype float32.
+    - 1D numpy array of shape (40,) dtype float32.
     """
     y = np.asarray(samples, dtype=np.complex64)
     if len(y) < 10:
-        return np.zeros(32, dtype=np.float32)
+        return np.zeros(40, dtype=np.float32)
 
     # 1. DC Removal and Power Normalization
     y_dc = y - np.mean(y)
@@ -141,6 +185,28 @@ def extract_frame_features(samples):
     mag_moment6 = float(np.mean(mag**6))
     iq_energy_ratio = float(np.var(y_norm.imag) / (np.var(y_norm.real) + 1e-12))
 
+    # 7. Dual-Order Costas Loop Features (Order 2 and Order 4)
+    y_l2, costas2_err_var = _run_costas_loop(y_derot2, order=2, loop_bw=0.06)
+    half2 = len(y_l2) // 2
+    y_settled2 = y_l2[half2:]
+    I2 = y_settled2.real
+    costas2_c20_real = float(np.mean(y_settled2.real**2 - y_settled2.imag**2))
+    var_i2 = float(np.var(I2))
+    costas2_kurt_i = float(np.mean((I2 - np.mean(I2))**4) / (var_i2**2 + 1e-12)) if var_i2 > 0 else 0.0
+
+    y_l4, costas4_err_var = _run_costas_loop(y_derot4, order=4, loop_bw=0.06)
+    half4 = len(y_l4) // 2
+    y_settled4 = y_l4[half4:]
+    I4 = y_settled4.real
+    Q4 = y_settled4.imag
+    var_i4 = float(np.var(I4))
+    var_q4 = float(np.var(Q4))
+    costas4_c40_real = float(np.real(np.mean(y_settled4**4) - 3.0 * (np.mean(y_settled4**2)**2)))
+    costas4_kurt_i = float(np.mean((I4 - np.mean(I4))**4) / (var_i4**2 + 1e-12)) if var_i4 > 0 else 0.0
+    costas4_kurt_q = float(np.mean((Q4 - np.mean(Q4))**4) / (var_q4**2 + 1e-12)) if var_q4 > 0 else 0.0
+    m2_l4 = float(np.mean(np.abs(y_settled4)**2))
+    costas4_c42 = float(np.mean(np.abs(y_settled4)**4) - np.abs(np.mean(y_settled4**2))**2 - 2.0 * m2_l4**2)
+
     feats = np.array([
         c20, c21, c40, c42, c63,
         amp_var, phase_var, freq_var, amp_kurt, zero_ratio,
@@ -148,7 +214,9 @@ def extract_frame_features(samples):
         fft2_p2a, fft4_p2a, mean_mag, max_mag,
         c20_derot2, c40_derot2, c20_derot4, c40_derot4,
         inst_freq_skewness, amp_skewness, snr_m2m4_db, psd_peak_ratio,
-        fft8_p2a, fft16_p2a, c42_norm, mag_moment4, mag_moment6, iq_energy_ratio
+        fft8_p2a, fft16_p2a, c42_norm, mag_moment4, mag_moment6, iq_energy_ratio,
+        costas2_err_var, costas2_c20_real, costas2_kurt_i,
+        costas4_err_var, costas4_c40_real, costas4_kurt_i, costas4_kurt_q, costas4_c42
     ], dtype=np.float32)
 
     # Sanitize NaNs, Infs, and extreme values

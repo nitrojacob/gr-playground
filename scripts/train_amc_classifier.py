@@ -33,10 +33,10 @@ from scripts.generate_amc_dataset import generate_raw_iq_frame
 
 class AMCFeatureNet(nn.Module):
     """
-    PyTorch Feature Classifier mapping 32 physical DSP features -> modulation logits.
+    PyTorch Feature Classifier mapping 40 physical DSP features -> modulation logits.
     Exportable directly to portable ONNX format via torch.onnx.export.
     """
-    def __init__(self, input_dim=32, num_classes=len(MODULATION_CLASSES)):
+    def __init__(self, input_dim=40, num_classes=len(MODULATION_CLASSES)):
         super().__init__()
         self.input_bn = nn.BatchNorm1d(input_dim)
         self.net = nn.Sequential(
@@ -64,7 +64,7 @@ def _generate_class_chunk(args):
     Avoids per-sample IPC serialization overhead across worker processes.
     """
     mod_name, target_idx, count = args
-    feats = np.zeros((count, 32), dtype=np.float32)
+    feats = np.zeros((count, 40), dtype=np.float32)
 
     for i in range(count):
         tier = np.random.rand()
@@ -162,7 +162,7 @@ def train_and_export_onnx(output_model_dir: str = "gr_playground/dsp/models", sa
     print(f"Data Split (80:20): Train={X_train.shape[0]} samples, Val={X_val.shape[0]} samples")
 
     device = torch.device("cpu")
-    model = AMCFeatureNet(input_dim=32, num_classes=len(MODULATION_CLASSES)).to(device)
+    model = AMCFeatureNet(input_dim=40, num_classes=len(MODULATION_CLASSES)).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=0.003, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
@@ -225,7 +225,7 @@ def train_and_export_onnx(output_model_dir: str = "gr_playground/dsp/models", sa
 
     # Export ONNX Model Artifact directly
     model.eval()
-    dummy_input = torch.randn(1, 32, dtype=torch.float32)
+    dummy_input = torch.randn(1, 40, dtype=torch.float32)
     torch.onnx.export(
         model,
         dummy_input,
