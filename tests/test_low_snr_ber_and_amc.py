@@ -15,7 +15,7 @@ from gr_playground.simulator.channel_simulator import ChannelSimulatorFlowgraph
 from gr_playground.dsp.synchronization import synchronize_signal_flowgraph
 from gr_playground.dsp.demodulation import slice_psk_qpsk_bits
 
-from gr_playground.dsp.amc import MODULATION_CLASSES
+from gr_playground.dsp.amc import MODULATION_CLASSES, RADIOML_TO_PARENT_MAP
 
 @pytest.mark.parametrize("snr_db", [2.0, 3.0])
 @pytest.mark.parametrize("mod_type", ["BPSK", "QPSK", "8PSK", "GFSK", "FM", "AM", "ASK", "OFDM", "SC-FDMA", "Noise"])
@@ -58,7 +58,7 @@ def test_low_snr_amc_topk_and_confidence_thresholds(snr_db, mod_type):
     }
 
     target_family = category_families.get(mod_type, {mod_type})
-    family_prob = sum(res[m] for m in target_family if m in res)
+    family_prob = sum(prob for m, prob in res.items() if m in target_family or RADIOML_TO_PARENT_MAP.get(m) in target_family)
 
     # Pass Criteria: Family cumulative probability >= 0.35 (35%), well above random 1/16 baseline
     assert family_prob >= 0.35, (

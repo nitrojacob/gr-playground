@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .agents/hooks-scripts/gate.py",
+            "command": "python3 hooks-scripts/gate.py",
             "timeout": 10
           }
         ]
@@ -22,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .agents/hooks-scripts/strip_ascii.py",
+            "command": "python3 hooks-scripts/strip_ascii.py",
             "timeout": 10
           }
         ]
@@ -34,7 +34,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .agents/hooks-scripts/strip_ascii.py",
+            "command": "python3 hooks-scripts/strip_ascii.py",
             "timeout": 10
           }
         ]

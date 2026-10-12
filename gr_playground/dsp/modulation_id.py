@@ -34,21 +34,38 @@ def apply_physical_dsp_sanity_checks(scores_dict, bandwidth_hz=None, features=No
         freq_var = features.get("freq_var", 0.0)
         zero_ratio = features.get("zero_ratio", 0.0)
         amp_kurt = features.get("amp_kurtosis", 3.0)
+        phase_var = features.get("phase_var", 0.0)
         c20 = cumulants.get("C20", 0.0) if cumulants is not None else 0.0
         c40 = cumulants.get("C40", 0.0) if cumulants is not None else 0.0
 
+        # Thermal noise squelch precheck: unmodulated Gaussian thermal noise exhibits
+        # characteristic phase variance ~ pi^2/3 and Rayleigh amplitude kurtosis (> 3.15) with low cumulants
+        if amp_kurt >= 3.15 and abs(phase_var - (np.pi**2) / 3.0) < 0.15 and c20 < 0.20 and c40 < 0.20:
+            scores["Noise"] = scores.get("Noise", 0.05) + 0.90
+            for k in list(scores.keys()):
+                if k != "Noise":
+                    scores[k] = scores.get(k, 0.05) * 0.05
+
         if amp_var >= 0.18 and c20 >= 0.50:
             # Variable amplitude narrowband: AM vs ASK / OOK
+            for k in ["FM", "GFSK", "CPFSK", "4FSK", "8FSK"]:
+                if k in scores:
+                    scores[k] = scores.get(k, 0.05) * 0.05
             if zero_ratio >= 0.15 or amp_kurt < 2.0:
                 scores["ASK"] = scores.get("ASK", 0.05) + 0.6
-                scores["AM"] = scores.get("AM", 0.05) * 0.1
+                for k in list(scores.keys()):
+                    if k.startswith("AM"):
+                        scores[k] = scores.get(k, 0.05) * 0.1
             else:
                 scores["AM"] = scores.get("AM", 0.05) + 0.5
-                scores["ASK"] = scores.get("ASK", 0.05) * 0.1
+                for k in list(scores.keys()):
+                    if k in ["ASK", "OOK", "4ASK", "8ASK"]:
+                        scores[k] = scores.get(k, 0.05) * 0.1
         elif amp_var < 0.05:
             # Constant-envelope narrowband: BPSK vs FM/GFSK vs QPSK
-            scores["ASK"] = scores.get("ASK", 0.05) * 0.05
-            scores["AM"] = scores.get("AM", 0.05) * 0.05
+            for k in list(scores.keys()):
+                if k.startswith("AM") or k in ["ASK", "OOK", "4ASK", "8ASK"]:
+                    scores[k] = scores.get(k, 0.05) * 0.05
             if c20 >= 0.60:
                 scores["BPSK"] = scores.get("BPSK", 0.05) + 0.6
                 scores["GFSK"] = scores.get("GFSK", 0.05) * 0.1
@@ -63,14 +80,14 @@ def apply_physical_dsp_sanity_checks(scores_dict, bandwidth_hz=None, features=No
         elif amp_var < 0.18:
             if c20 >= 0.60:
                 scores["BPSK"] = scores.get("BPSK", 0.05) + 0.6
-                scores["ASK"] = scores.get("ASK", 0.05) * 0.05
-                scores["GFSK"] = scores.get("GFSK", 0.05) * 0.1
-                scores["FM"] = scores.get("FM", 0.05) * 0.1
+                for k in list(scores.keys()):
+                    if k.startswith("AM") or k in ["ASK", "OOK", "4ASK", "8ASK", "GFSK", "FM"]:
+                        scores[k] = scores.get(k, 0.05) * 0.05
             elif c40 >= 0.40:
                 scores["QPSK"] = scores.get("QPSK", 0.05) + 0.6
-                scores["AM"] = scores.get("AM", 0.05) * 0.05
-                scores["GFSK"] = scores.get("GFSK", 0.05) * 0.1
-                scores["FM"] = scores.get("FM", 0.05) * 0.1
+                for k in list(scores.keys()):
+                    if k.startswith("AM") or k in ["ASK", "OOK", "4ASK", "8ASK", "GFSK", "FM"]:
+                        scores[k] = scores.get(k, 0.05) * 0.05
 
     # Renormalize probabilities to sum to 1.0
     total = sum(scores.values())
