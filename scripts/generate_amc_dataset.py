@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Dataset Generation Script for Automatic Modulation Classification (AMC).
 Synthesizes IQ frames across 16 modulation schemes under variable sample rates,
@@ -88,29 +89,33 @@ def _shape_symbols_iq(symbols: np.ndarray, sps: int, num_samples: int,
 
 def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
                           snr_db: float = 20.0, cfo_rel: float = 0.0,
+                          phase_offset_rad: float = 0.0,
+                          fractional_delay: float = 0.0,
                           phase_noise_std: float = 0.0, mag_imbal_db: float = 0.0,
                           phase_imbal_deg: float = 0.0, use_rrc: bool = None,
                           rrc_alpha: float = 0.35) -> np.ndarray:
     """
     Synthesize a single raw complex64 IQ frame (length num_samples) for a target modulation scheme.
+    Supports random carrier phase rotation, synthetic CFO injection (+/- delta_f), and fractional timing delays.
     """
-    num_symbols = int(np.ceil(num_samples / sps)) + 24
+    pad_samples = 64
+    total_samples = num_samples + pad_samples
+    num_symbols = int(np.ceil(total_samples / sps)) + 24
     if use_rrc is None:
         do_rrc = (np.random.rand() < 0.85)
     else:
         do_rrc = use_rrc
 
     if mod_type == "Noise":
-        iq = (np.random.randn(num_samples) + 1j * np.random.randn(num_samples)) / np.sqrt(2.0)
-        return iq.astype(np.complex64)
+        iq = (np.random.randn(total_samples) + 1j * np.random.randn(total_samples)) / np.sqrt(2.0)
 
     elif mod_type in ["AM", "AM-DSB-WC", "AM-DSB-SC", "AM-SSB-WC", "AM-SSB-SC", "FM"]:
-        t = np.arange(num_samples)
+        t_base = np.arange(total_samples)
         if np.random.rand() > 0.5:
             f_m = np.random.uniform(0.001, 0.015)
-            audio = np.sin(2 * np.pi * f_m * t)
+            audio = np.sin(2 * np.pi * f_m * t_base)
         else:
-            audio = 0.6 * np.sin(2 * np.pi * 0.005 * t) + 0.4 * np.sin(2 * np.pi * 0.012 * t)
+            audio = 0.6 * np.sin(2 * np.pi * 0.005 * t_base) + 0.4 * np.sin(2 * np.pi * 0.012 * t_base)
 
         if mod_type in ["AM", "AM-DSB-WC"]:
             m_depth = np.random.uniform(0.5, 0.95)
@@ -136,12 +141,12 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
             symbols = np.random.choice([-3.0, -1.0, 1.0, 3.0], size=num_symbols)
         else: # 8ASK
             symbols = np.random.choice([-7.0, -5.0, -3.0, -1.0, 1.0, 3.0, 5.0, 7.0], size=num_symbols)
-        iq = _shape_symbols_iq(symbols + 1j * 0.0, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
+        iq = _shape_symbols_iq(symbols + 1j * 0.0, sps, total_samples, use_rrc=do_rrc, alpha=rrc_alpha)
 
     elif mod_type == "BPSK":
         bits = np.random.choice([0, 1], size=num_symbols)
         symbols = 2.0 * bits - 1.0
-        iq = _shape_symbols_iq(symbols + 1j * 0.0, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
+        iq = _shape_symbols_iq(symbols + 1j * 0.0, sps, total_samples, use_rrc=do_rrc, alpha=rrc_alpha)
 
     elif mod_type == "QPSK":
         bits_i = np.random.choice([0, 1], size=num_symbols)
@@ -149,15 +154,15 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
         sym_i = (2.0 * bits_i - 1.0) / np.sqrt(2.0)
         sym_q = (2.0 * bits_q - 1.0) / np.sqrt(2.0)
         symbols = sym_i + 1j * sym_q
-        iq = _shape_symbols_iq(symbols, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
+        iq = _shape_symbols_iq(symbols, sps, total_samples, use_rrc=do_rrc, alpha=rrc_alpha)
 
     elif mod_type == "OQPSK":
         bits_i = np.random.choice([0, 1], size=num_symbols)
         bits_q = np.random.choice([0, 1], size=num_symbols)
         sym_i = (2.0 * bits_i - 1.0) / np.sqrt(2.0)
         sym_q = (2.0 * bits_q - 1.0) / np.sqrt(2.0)
-        iq_i = _shape_symbols_iq(sym_i + 1j * 0.0, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
-        iq_q = _shape_symbols_iq(sym_q + 1j * 0.0, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
+        iq_i = _shape_symbols_iq(sym_i + 1j * 0.0, sps, total_samples, use_rrc=do_rrc, alpha=rrc_alpha)
+        iq_q = _shape_symbols_iq(sym_q + 1j * 0.0, sps, total_samples, use_rrc=do_rrc, alpha=rrc_alpha)
         offset = max(1, sps // 2)
         iq_q = np.roll(iq_q, offset)
         iq = iq_i.real + 1j * iq_q.real
@@ -166,7 +171,7 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
         m_order = 8 if mod_type == "8PSK" else (16 if mod_type == "16PSK" else 32)
         phases = (2 * np.pi / float(m_order)) * np.random.randint(0, m_order, size=num_symbols)
         symbols = np.exp(1j * phases)
-        iq = _shape_symbols_iq(symbols, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
+        iq = _shape_symbols_iq(symbols, sps, total_samples, use_rrc=do_rrc, alpha=rrc_alpha)
 
     elif mod_type in ["16QAM", "32QAM", "64QAM", "128QAM", "256QAM"]:
         if mod_type == "16QAM":
@@ -189,7 +194,7 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
 
         constellation = constellation / np.sqrt(np.mean(np.abs(constellation)**2))
         syms = np.random.choice(constellation, size=num_symbols)
-        iq = _shape_symbols_iq(syms, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
+        iq = _shape_symbols_iq(syms, sps, total_samples, use_rrc=do_rrc, alpha=rrc_alpha)
 
     elif mod_type in ["16APSK", "32APSK", "64APSK", "128APSK"]:
         if mod_type == "16APSK":
@@ -220,7 +225,7 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
 
         constellation /= np.sqrt(np.mean(np.abs(constellation)**2))
         syms = np.random.choice(constellation, size=num_symbols)
-        iq = _shape_symbols_iq(syms, sps, num_samples, use_rrc=do_rrc, alpha=rrc_alpha)
+        iq = _shape_symbols_iq(syms, sps, total_samples, use_rrc=do_rrc, alpha=rrc_alpha)
 
     elif mod_type in ["GFSK", "CPFSK"]:
         bits = np.random.choice([0, 1], size=num_symbols)
@@ -230,9 +235,9 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
             t_g = np.linspace(-2, 2, 4 * sps)
             h_g = np.exp(-t_g**2 / (2 * 0.5**2))
             h_g /= np.sum(h_g)
-            filtered = np.convolve(upsampled, h_g, mode='same')[:num_samples]
+            filtered = np.convolve(upsampled, h_g, mode='same')[:total_samples]
         else: # CPFSK
-            filtered = upsampled[:num_samples]
+            filtered = upsampled[:total_samples]
         h_mod = 0.5 if mod_type == "GFSK" else 0.75
         phase = np.pi * h_mod * np.cumsum(filtered) / sps
         iq = np.exp(1j * phase)
@@ -241,7 +246,7 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
         n_fft = 64
         n_used = 48
         cp_len = 16
-        n_syms = int(np.ceil(num_samples / (n_fft + cp_len)))
+        n_syms = int(np.ceil(total_samples / (n_fft + cp_len)))
         ofdm_syms = []
         for _ in range(n_syms):
             subcarriers = np.zeros(n_fft, dtype=np.complex64)
@@ -253,10 +258,24 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
             cp = time_domain[-cp_len:]
             sym_with_cp = np.concatenate([cp, time_domain])
             ofdm_syms.append(sym_with_cp)
-        iq = np.concatenate(ofdm_syms)[:num_samples]
+        iq = np.concatenate(ofdm_syms)[:total_samples]
 
     else:
-        iq = (np.random.randn(num_samples) + 1j * np.random.randn(num_samples)) / np.sqrt(2.0)
+        iq = (np.random.randn(total_samples) + 1j * np.random.randn(total_samples)) / np.sqrt(2.0)
+
+    if len(iq) < total_samples:
+        iq = np.pad(iq, (0, total_samples - len(iq)), mode='wrap')
+
+    # Apply Fractional Timing Delay (sub-sample shift)
+    if abs(fractional_delay) > 1e-4:
+        freqs = np.fft.fftfreq(total_samples)
+        iq = np.fft.ifft(np.fft.fft(iq) * np.exp(-1j * 2.0 * np.pi * freqs * fractional_delay)).astype(np.complex64)
+
+    # Discard boundary padding to isolate pure, artifact-free delayed frame
+    half_pad = pad_samples // 2
+    iq = iq[half_pad : half_pad + num_samples]
+    if len(iq) < num_samples:
+        iq = np.pad(iq, (0, num_samples - len(iq)), mode='wrap')
 
     # Apply Impairments
     # 1. Power normalization
@@ -264,10 +283,11 @@ def generate_raw_iq_frame(mod_type: str, num_samples: int = 2048, sps: int = 4,
     if p_sig > 0:
         iq = iq / np.sqrt(p_sig)
 
-    # 2. CFO
-    if cfo_rel != 0.0:
+    # 2. Carrier Phase Rotation & CFO Injection (+/- delta_f)
+    if cfo_rel != 0.0 or phase_offset_rad != 0.0:
         t = np.arange(num_samples)
-        iq = iq * np.exp(1j * 2 * np.pi * cfo_rel * t)
+        phase_carrier = 2.0 * np.pi * cfo_rel * t + phase_offset_rad
+        iq = iq * np.exp(1j * phase_carrier)
 
     # 3. Phase Noise
     if phase_noise_std > 0.0:
@@ -310,13 +330,17 @@ def build_dataset(num_stage1_frames: int = 80000, num_stage2_seqs: int = 8000,
             snr_db = float(np.random.uniform(-10.0, 30.0))
             sps = int(np.random.choice([2, 4, 8, 16]))
             cfo_rel = float(np.random.uniform(-0.08, 0.08))
+            phase_offset_rad = float(np.random.uniform(-np.pi, np.pi))
+            frac_delay = float(np.random.uniform(-sps / 2.0, sps / 2.0))
             phase_noise_std = float(np.random.uniform(0.0, 0.025))
             mag_imbal_db = float(np.random.uniform(0.0, 1.2))
             phase_imbal_deg = float(np.random.uniform(0.0, 8.0))
 
             frame = generate_raw_iq_frame(
                 cls_name, num_samples=2048, sps=sps, snr_db=snr_db,
-                cfo_rel=cfo_rel, phase_noise_std=phase_noise_std,
+                cfo_rel=cfo_rel, phase_offset_rad=phase_offset_rad,
+                fractional_delay=frac_delay,
+                phase_noise_std=phase_noise_std,
                 mag_imbal_db=mag_imbal_db, phase_imbal_deg=phase_imbal_deg
             )
 
@@ -356,11 +380,15 @@ def build_dataset(num_stage1_frames: int = 80000, num_stage2_seqs: int = 8000,
             for _ in range(num_frames):
                 sps = int(np.random.choice([2, 4, 8, 16]))
                 cfo_rel = float(np.random.uniform(-0.08, 0.08))
+                phase_offset_rad = float(np.random.uniform(-np.pi, np.pi))
+                frac_delay = float(np.random.uniform(-sps / 2.0, sps / 2.0))
                 phase_noise_std = float(np.random.uniform(0.0, 0.025))
 
                 f = generate_raw_iq_frame(
                     cls_name, num_samples=2048, sps=sps, snr_db=snr_db,
-                    cfo_rel=cfo_rel, phase_noise_std=phase_noise_std
+                    cfo_rel=cfo_rel, phase_offset_rad=phase_offset_rad,
+                    fractional_delay=frac_delay,
+                    phase_noise_std=phase_noise_std
                 )
                 ff = extract_frame_features(f)
                 frame_feats_seq.append(ff)

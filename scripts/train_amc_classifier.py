@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Training Script for Automatic Modulation Classification (AMC) Model.
 Trains PyTorch AMCFeatureNet across all MODULATION_CLASSES (including all RadioML 2018.01A schemes)
@@ -71,21 +72,21 @@ def _generate_class_chunk(args):
         if tier < 0.50:
             # Low & Very Low SNR Tier (-10.0 dB to +6.0 dB) -> 50% of dataset
             snr = float(np.random.uniform(-10.0, 6.0))
-            cfo_rel = float(np.random.uniform(-0.025, 0.025))
+            cfo_rel = float(np.random.uniform(-0.05, 0.05))
             phase_noise = float(np.random.uniform(0.0, 0.03))
             mag_imbal = float(np.random.uniform(0.0, 1.0))
             phase_imbal = float(np.random.uniform(0.0, 10.0))
         elif tier < 0.80:
             # Moderate SNR Tier (+6.0 dB to +16.0 dB) -> 30% of dataset
             snr = float(np.random.uniform(6.0, 16.0))
-            cfo_rel = float(np.random.uniform(-0.015, 0.015))
+            cfo_rel = float(np.random.uniform(-0.04, 0.04))
             phase_noise = float(np.random.uniform(0.0, 0.015))
             mag_imbal = float(np.random.uniform(0.0, 0.6))
             phase_imbal = float(np.random.uniform(0.0, 5.0))
         else:
             # Clean / High SNR Tier (+16.0 dB to +30.0 dB) -> 20% of dataset
             snr = float(np.random.uniform(16.0, 30.0))
-            cfo_rel = float(np.random.uniform(-0.005, 0.005))
+            cfo_rel = float(np.random.uniform(-0.03, 0.03))
             phase_noise = float(np.random.uniform(0.0, 0.005))
             mag_imbal = float(np.random.uniform(0.0, 0.2))
             phase_imbal = float(np.random.uniform(0.0, 2.0))
@@ -94,12 +95,17 @@ def _generate_class_chunk(args):
         sps = int(np.random.choice([4, 8]))
         rrc_alpha = float(np.random.choice([0.25, 0.35, 0.45]))
         use_rrc = (np.random.rand() < 0.85)
+        phase_offset_rad = float(np.random.uniform(-np.pi, np.pi))
+        frac_delay = float(np.random.uniform(-sps / 2.0, sps / 2.0))
+
         samples = generate_raw_iq_frame(
             mod_type=mod_name,
             num_samples=num_samples,
             sps=sps,
             snr_db=snr,
             cfo_rel=cfo_rel,
+            phase_offset_rad=phase_offset_rad,
+            fractional_delay=frac_delay,
             phase_noise_std=phase_noise,
             mag_imbal_db=mag_imbal,
             phase_imbal_deg=phase_imbal,

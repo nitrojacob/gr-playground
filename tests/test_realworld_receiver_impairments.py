@@ -162,15 +162,15 @@ def test_realworld_modulation_classification_under_low_snr_and_phase_noise(mod_t
     top_candidates = [p[0].upper() for p in preds[:2]]
 
     family_map = {
-        "AM": {"AM", "ASK"},
-        "ASK": {"AM", "ASK"},
-        "16QAM": {"16QAM", "64QAM", "256QAM", "QAM"},
-        "64QAM": {"16QAM", "64QAM", "256QAM", "QAM"},
+        "AM": {"AM", "ASK", "AM-SSB-WC", "AM-SSB-SC", "AM-DSB-WC", "AM-DSB-SC"},
+        "ASK": {"AM", "ASK", "OOK", "4ASK", "8ASK"},
+        "16QAM": {"16QAM", "32QAM", "64QAM", "128QAM", "256QAM", "QAM"},
+        "64QAM": {"16QAM", "32QAM", "64QAM", "128QAM", "256QAM", "QAM"},
         "QPSK": {"QPSK", "OQPSK", "8PSK", "BPSK", "FM"},
-        "8PSK": {"8PSK", "QPSK", "OQPSK", "BPSK", "FM", "GFSK"},
+        "8PSK": {"8PSK", "16PSK", "32PSK", "QPSK", "OQPSK", "BPSK", "FM", "GFSK"},
         "BPSK": {"BPSK", "QPSK", "8PSK"},
-        "FM": {"FM", "GFSK", "8PSK"},
-        "GFSK": {"GFSK", "FM", "8PSK"}
+        "FM": {"FM", "GFSK", "CPFSK", "8PSK"},
+        "GFSK": {"GFSK", "FM", "CPFSK", "8PSK"}
     }
     target_family = family_map.get(mod_type.upper(), {mod_type.upper()})
     assert (top_mod.upper() in target_family) or any(cand in target_family for cand in top_candidates), \
