@@ -80,7 +80,7 @@ If you require isolated, step-by-step control over individual DSP steps, you can
 ## Directory Structure, Key Principles & Architecture Specifications
 
 For the complete **Directory Structure**, **Key Architectural Principles**, and **Module Specifications**, see:
-👉 **[specs/ARCHITECTURE.md](specs/ARCHITECTURE.md)**
+**[specs/ARCHITECTURE.md](specs/ARCHITECTURE.md)**
 
 ---
 
@@ -94,6 +94,31 @@ Execute all tests across all 13 architectural layers:
 ./run_all_tests.sh -v
 ```
 
+---
+
+## Benchmarks
+
+### Zero-Shot Modulation Recognition on RadioML 2018.01A
+
+The Automatic Modulation Classification engine (`MLAMCClassifier` backed by `amc_model.onnx`) is trained strictly on **100% synthetic training data** synthesized by `gr_playground.simulator`. It is evaluated against the real-world **RadioML 2018.01A** dataset (`GOLD_XYZ_OSHF.hdf5`), which contains over 2.55 million over-the-air frame slices across 24 modulation formats from -20 dB to +30 dB SNR.
+
+- **Kaggle Benchmark Notebook**: [RadioML 2018 MLAMC Benchmark](https://www.kaggle.com/code/jacobmgec/radioml2018-mlamc-benchmark)
+- **Zero-Shot Domain Transfer**: The model is never exposed to real-world over-the-air signals during training. The synthetic dataset synthesizes realistic physical channel impairments:
+  - Random carrier phase rotation (uniform [-pi, pi])
+  - Bidirectional carrier frequency offset (+/- delta_f up to +/- 0.05 f_s)
+  - Continuous sub-sample fractional timing delays (via FFT phase ramp)
+  - Additive White Gaussian Noise (AWGN, -20 dB to +30 dB SNR)
+  - Oscillator phase noise and I/Q amplitude/phase imbalance
+- **Feature Representation**: 40-dimensional physical feature vector combining higher-order cumulants (C20, C21, C40, C41, C42, C60, C63), spectral and envelope moments, and dual-order Costas loop tracking features (2nd-order and 4th-order Costas loop phase error variances and lock indicators).
+- **Performance Highlights**:
+  - **Individual 24-Class Exact Accuracy**: Reaches ~27% to 30% top-1 exact accuracy on raw, unsynchronized 1024-sample frames at moderate-to-high SNR (random chance across 24 classes is 4.17%).
+  - **Family-Level Classification Accuracy**: Achieves ~50% family accuracy across all 24 classes, and 80% to 90% accuracy on dominant families (QPSK ~90%, PSK ~80%, AM ~80%-90%, FM/GFSK ~80%-90%).
+  - **Inference Latency**: Highly efficient CPU execution via ONNX Runtime (~3.7 to 7.7 ms per 1024-sample frame), enabling real-time streaming classification on edge SDR hardware.
+
+---
+
 ## Open Problems
 * In real systems at very high channel impairment, there will be errors in received message. Rather than the testsuite being structured for a hard equality with input (which may be theoretically impossible), a BER threshold for pass may be more appropriate to learn more advanced strategies.
-* A hardcoded decision tree (`modulation_id.py`) is used for classification of modulation schemes. Explore possibility of the LLM agent training a small MLP for classification (AI training AI).
+* Testcases currently are passing if the family is identified correctly. See whether the agent is able to put in further optimization effort if strict modulation matching is enforced.
+* Feature-based ML classification (`MLAMCClassifier` / `amc_model.onnx`) is now integrated. Explore extending this to end-to-end 1D/2D neural network or transformer models directly on raw IQ sequences.
+* Currently I am in the loop for architectural decisions like (heuristic AMC -> ML AMC). Is it possible to have an architect agent that identifies the implementation agent has hit a wall and rearchitects the problem? (Multiple Agents.md in the same project directory each agent with its own goals/intents)
