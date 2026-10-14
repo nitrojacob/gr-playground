@@ -130,6 +130,56 @@ def test_ml_classifier_across_core_modulations_and_impairments():
             assert pytest.approx(sum(res.values()), abs=1e-2) == 1.0
             assert not any(np.isnan(v) for v in res.values())
 
+
+def test_dl_classifier_with_trained_resnet1d(sample_iq):
+    """Test DLAMCClassifier loading trained 1D ResNet model and running inference directly on IQ data."""
+    clf = DLAMCClassifier()
+    assert (clf.onnx_session is not None or clf.torch_model is not None or clf.fallback_classifier is not None)
+
+    res = clf.classify(sample_iq, sample_rate=32000.0)
+    assert isinstance(res, dict)
+    assert len(res) == len(MODULATION_CLASSES)
+    assert pytest.approx(sum(res.values()), abs=1e-2) == 1.0
+
+    top_class = max(res.items(), key=lambda x: x[1])[0]
+    assert top_class in MODULATION_CLASSES
+
+
+def test_classify_modulation_with_dl_mode(sample_iq):
+    """Test top-level classify_modulation function with mode='dl'."""
+    from gr_playground.dsp.modulation_id import classify_modulation
+    preds, cumulants, const_stats = classify_modulation(sample_iq, mode="dl")
+
+    assert len(preds) == len(MODULATION_CLASSES)
+    assert isinstance(cumulants, dict)
+    assert isinstance(const_stats, dict)
+    assert pytest.approx(sum(score for _, score in preds), abs=1e-2) == 1.0
+
+
+def test_dl_classifier_across_core_modulations_and_impairments():
+    """
+    Sweeps DLAMCClassifier directly feeding raw IQ frames across core modulation schemes.
+    """
+    from scripts.generate_amc_dataset import generate_raw_iq_frame
+
+    clf = DLAMCClassifier()
+
+    test_classes = ["AM", "FM", "BPSK", "GFSK", "QPSK", "8PSK", "ASK", "Noise"]
+    snr_levels = [10.0, 20.0]
+
+    for mod in test_classes:
+        for snr in snr_levels:
+            iq = generate_raw_iq_frame(
+                mod, num_samples=2048, sps=4, snr_db=snr,
+                cfo_rel=0.01, phase_noise_std=0.005, mag_imbal_db=0.3
+            )
+            res = clf.classify(iq, sample_rate=32000.0)
+
+            assert isinstance(res, dict)
+            assert len(res) == len(MODULATION_CLASSES)
+            assert pytest.approx(sum(res.values()), abs=1e-2) == 1.0
+            assert not any(np.isnan(v) for v in res.values())
+
 @pytest.mark.next_level
 def test_next_level_radioml_modulations():
     """
