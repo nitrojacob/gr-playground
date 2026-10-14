@@ -29,13 +29,69 @@ def apply_physical_dsp_sanity_checks(scores_dict, bandwidth_hz=None, features=No
                 if mod in scores:
                     scores[mod] *= 0.05  # Severe penalty on physically impossible narrow-bandwidth high-order schemes
 
-    # Thermal noise squelch check
+    # Envelope and Constellation Consistency Rules
     if features is not None:
+        amp_var = features.get("amp_var", 0.5)
+        zero_ratio = features.get("zero_ratio", 0.0)
+        c20 = cumulants.get("C20", 0.0) if cumulants is not None else 0.0
+
+        # Physical symmetry and envelope rules
+        c40 = cumulants.get("C40", 0.0) if cumulants is not None else 0.0
+        c42 = cumulants.get("C42", 0.0) if cumulants is not None else 0.0
+
+        # 1. Constant-envelope physical rule (FM, GFSK, BPSK)
+        if amp_var < 0.05:
+            # Multi-amplitude schemes are physically impossible with near-zero amplitude variance
+            multi_amp = [
+                "16QAM", "32QAM", "64QAM", "128QAM", "256QAM",
+                "16APSK", "32APSK", "64APSK", "128APSK",
+                "4ASK", "8ASK"
+            ]
+            for mod in multi_amp:
+                if mod in scores:
+                    scores[mod] *= 0.001
+
+            if c20 > 0.65:
+                scores["BPSK"] = scores.get("BPSK", 0.01) + 2.0
+            elif c20 < 0.35:
+                scores["FM"] = scores.get("FM", 0.01) + 1.5
+                scores["GFSK"] = scores.get("GFSK", 0.01) + 1.5
+
+        # 2. 2-Fold Symmetry (BPSK / ASK)
+        elif c20 > 0.70:
+            for mod in ["16QAM", "32QAM", "64QAM", "128QAM", "256QAM", "16APSK", "32APSK", "64APSK", "128APSK"]:
+                if mod in scores:
+                    scores[mod] *= 0.001
+            if zero_ratio < 0.20:
+                scores["BPSK"] = scores.get("BPSK", 0.01) + 2.0
+            else:
+                scores["ASK"] = scores.get("ASK", 0.01) + 2.0
+                scores["OOK"] = scores.get("OOK", 0.01) + 2.0
+
+        # 3. 4-Fold Symmetry (QPSK vs QAM distinction via amplitude variance)
+        elif c20 < 0.20 and c40 > 0.35 and c42 > 1.20:
+            if amp_var < 0.12:
+                for mod in ["16QAM", "32QAM", "64QAM", "128QAM", "256QAM", "16APSK", "32APSK", "64APSK", "128APSK"]:
+                    if mod in scores:
+                        scores[mod] *= 0.01
+                scores["QPSK"] = scores.get("QPSK", 0.01) + 2.0
+            else:
+                for mod in ["BPSK", "QPSK", "8PSK", "16PSK", "32PSK"]:
+                    if mod in scores:
+                        scores[mod] *= 0.01
+                scores["16QAM"] = scores.get("16QAM", 0.01) + 2.0
+                scores["64QAM"] = scores.get("64QAM", 0.01) + 1.5
+
+        # 4. ASK / OOK physical envelope rule
+        if zero_ratio > 0.25 and c20 > 0.50:
+            scores["ASK"] = scores.get("ASK", 0.01) + 2.0
+            scores["OOK"] = scores.get("OOK", 0.01) + 2.0
+
+        # Thermal noise squelch check
         amp_kurt = features.get("amp_kurtosis", 3.0)
         phase_var = features.get("phase_var", 0.0)
-        c20 = cumulants.get("C20", 0.0) if cumulants is not None else 0.0
         c40 = cumulants.get("C40", 0.0) if cumulants is not None else 0.0
-        if amp_kurt >= 3.15 and abs(phase_var - (np.pi**2) / 3.0) < 0.15 and c20 < 0.20 and c40 < 0.20:
+        if amp_kurt >= 3.0 and abs(phase_var - (np.pi**2) / 3.0) < 0.20 and c20 < 0.20 and c40 < 0.25:
             scores["Noise"] = scores.get("Noise", 0.05) + 0.90
             for k in list(scores.keys()):
                 if k != "Noise":
@@ -49,10 +105,10 @@ def apply_physical_dsp_sanity_checks(scores_dict, bandwidth_hz=None, features=No
     return scores
 
 
-def classify_modulation(samples, mode: str = "ml", bandwidth_hz: float = None):
+def classify_modulation(samples, mode: str = "dl", bandwidth_hz: float = None):
     """
     Multi-class automatic modulation classification.
-    Delegates to the requested AMC Strategy Classifier ("ml" or "dl"). Default: "ml".
+    Delegates to the requested AMC Strategy Classifier ("dl" or "ml"). Default: "dl".
     Optionally accepts bandwidth_hz for physical DSP sanity filtering.
     Returns (predictions_list, cumulants_dict, constellation_stats_dict).
     """

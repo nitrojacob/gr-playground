@@ -39,6 +39,7 @@ from gr_playground.dsp.synchronization import synchronize_signal_flowgraph
 from gr_playground.dsp.demodulation import demodulate_signal_flowgraph
 from gr_playground.dsp.flowgraph_builder import FlowgraphBuilder
 from demodulate_ask import demodulate_ask_ook
+from gr_playground.dsp.amc import get_onnx_runtime_info
 
 def run_rf_analysis_pipeline(input_path, scan_only=False, channel_index=1, manual_offset=None, decimation=10, output_dir="/tmp", auto_all=False):
     if not os.path.exists(input_path):
@@ -52,7 +53,11 @@ def run_rf_analysis_pipeline(input_path, scan_only=False, channel_index=1, manua
 
     print(f"\n=========================================================================")
     print(f"🛰️  Top-Level RF Signal Analysis Orchestrator")
+    has_ort, ort_ver = get_onnx_runtime_info()
+    ort_status = f"Available (version {ort_ver})" if has_ort else "Not available"
+
     print(f"=========================================================================")
+    print(f"ONNX Runtime         : {ort_status}")
     print(f"Input Dataset        : {input_path}")
     print(f"Center Frequency     : {center_freq/1e6:.3f} MHz")
     print(f"Wideband Sample Rate : {sample_rate/1e6:.2f} MSps ({len(samples):,} samples)")

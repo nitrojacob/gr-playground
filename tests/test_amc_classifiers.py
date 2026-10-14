@@ -11,6 +11,7 @@ from gr_playground.dsp.amc import (
     MLAMCClassifier,
     DLAMCClassifier,
     get_amc_classifier,
+    get_onnx_runtime_info,
     MODULATION_CLASSES,
     RADIOML_24_CLASSES,
     RADIOML_TO_PARENT_MAP
@@ -69,19 +70,35 @@ def test_dl_classifier_fallback(sample_iq):
     assert isinstance(res, dict)
     assert pytest.approx(sum(res.values()), abs=1e-2) == 1.0
 
-def test_factory_get_amc_classifier():
-    """Test factory strategy selector function."""
+def test_factory_get_amc_classifier(capsys):
+    """Test factory strategy selector function with DL default, ML fallback, and error reporting."""
+    # 1. Explicit ML request
     m_clf = get_amc_classifier("ml")
     assert isinstance(m_clf, BaseAMCClassifier)
     assert isinstance(m_clf, MLAMCClassifier)
 
+    # 2. Explicit DL request
     d_clf = get_amc_classifier("dl")
     assert isinstance(d_clf, BaseAMCClassifier)
     assert isinstance(d_clf, DLAMCClassifier)
 
-    default_clf = get_amc_classifier("default")
+    # 3. Default mode -> DL AMC if weights and packages available
+    default_clf = get_amc_classifier()
     assert isinstance(default_clf, BaseAMCClassifier)
-    assert isinstance(default_clf, MLAMCClassifier)
+    assert isinstance(default_clf, DLAMCClassifier)
+
+    # 4. Fallback to ML AMC with message when DL weights are missing
+    capsys.readouterr()  # clear buffer
+    fallback_clf = get_amc_classifier("dl", model_dir="/tmp/non_existent_dl_weights")
+    assert isinstance(fallback_clf, MLAMCClassifier)
+    captured = capsys.readouterr()
+    assert "Notice: DL AMC unavailable" in captured.err or "Falling back to ML AMC" in captured.err
+
+    # 5. Error message when both DL and ML fail to load
+    capsys.readouterr()
+    failed_clf = get_amc_classifier("dl", model_dir="/tmp/completely_empty_invalid_dir")
+    captured = capsys.readouterr()
+    assert "ERROR:" in captured.err
 
 def test_ml_classifier_with_trained_models(sample_iq):
     """Test MLAMCClassifier loading trained model binaries/ONNX and running inference."""
@@ -302,6 +319,33 @@ def test_radioml_direct_classes_progressive_impairments(impairment_level):
             assert (mod in top3 or parent in top3 or any(parent in m for m in top3)), (
                 f"Expected {mod} or parent {parent} in top candidates under {impairment_level} tier, got {top3}"
             )
+
+
+def test_get_onnx_runtime_info():
+    """Verify get_onnx_runtime_info returns a valid (bool, str or None) tuple."""
+    has_ort, ver = get_onnx_runtime_info()
+    assert isinstance(has_ort, bool)
+    if has_ort:
+        assert isinstance(ver, str)
+        assert len(ver) > 0
+    else:
+        assert ver is None
+
+
+def test_scanner_onnx_runtime_output():
+    """Verify scanner prints ONNX runtime availability at start."""
+    import subprocess
+    import os
+
+    cmd = [
+        "python3", "scripts/scanner.py", "--simulate",
+        "--start", "100", "--end", "100", "--duration", "0.05",
+        "--num-workers", "1", "--temp-dir", "/tmp/scanner_test_tmp"
+    ]
+    env = dict(os.environ, HOME="/tmp")
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+    assert res.returncode == 0
+    assert "ONNX Runtime    :" in res.stdout
 
 
 

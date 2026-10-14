@@ -4,6 +4,7 @@ ONNX is the de-facto format for model persistence across environments.
 """
 
 import os
+import sys
 import numpy as np
 import logging
 
@@ -41,10 +42,14 @@ class MLAMCClassifier(BaseAMCClassifier):
                 logger.info(f"Loaded ONNX AMC model from {self.onnx_path}")
                 return
             except Exception as e:
-                logger.warning(f"Failed to load ONNX model via onnxruntime: {e}")
+                err_msg = f"ERROR: Failed to initialize ONNX ML AMC model runtime from '{self.onnx_path}': {e}"
+                logger.error(err_msg)
+                sys.stderr.write(f"{err_msg}\n")
                 self.onnx_session = None
         else:
-            logger.warning(f"ONNX model artifact not found or unreadable at {self.onnx_path}")
+            err_msg = f"ERROR: ONNX ML AMC model artifact not found or unreadable at '{self.onnx_path}'"
+            logger.error(err_msg)
+            sys.stderr.write(f"{err_msg}\n")
             self.onnx_session = None
 
     def classify(self, samples, sample_rate: float = 32000.0) -> dict:

@@ -5,6 +5,7 @@ Falls back gracefully to MLAMCClassifier when weights are missing.
 """
 
 import os
+import sys
 import logging
 import numpy as np
 
@@ -140,19 +141,36 @@ class DLAMCClassifier(BaseAMCClassifier):
                 logger.warning(f"Failed to load PyTorch model weights from {pt_path}: {e}")
                 self.torch_model = None
 
-        # 3. Fallback to MLAMCClassifier
-        logger.info(
-            f"DL AMC model weights not available at {self.model_path}. "
-            "Falling back to MLAMCClassifier."
+        # 3. Fallback to MLAMCClassifier with message
+        fallback_msg = (
+            f"Notice: DL AMC model weights not available at '{self.model_path}' "
+            "(or required packages uninitialized). Falling back to ML AMC."
         )
+        logger.warning(fallback_msg)
+        sys.stderr.write(f"{fallback_msg}\n")
         self._setup_fallback()
 
     def _setup_fallback(self):
         try:
             from gr_playground.dsp.amc.ml import MLAMCClassifier
-            self.fallback_classifier = MLAMCClassifier()
+            fallback_dir = self.model_path if os.path.isdir(self.model_path) else os.path.dirname(self.model_path)
+            default_models_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
+            if fallback_dir != default_models_dir and not os.path.exists(os.path.join(fallback_dir, "amc_model.onnx")):
+                self.fallback_classifier = MLAMCClassifier(model_dir=fallback_dir)
+            else:
+                self.fallback_classifier = MLAMCClassifier()
+
+            if self.fallback_classifier.onnx_session is None:
+                err_msg = (
+                    "ERROR: ML AMC fallback failed to load! Neither DL AMC nor ML AMC models could be initialized. "
+                    "Ensure model weights exist in 'gr_playground/dsp/models/' and onnxruntime is installed."
+                )
+                logger.error(err_msg)
+                sys.stderr.write(f"{err_msg}\n")
         except Exception as e:
-            logger.warning(f"Failed to setup MLAMCClassifier fallback: {e}")
+            err_msg = f"ERROR: Failed to initialize MLAMCClassifier fallback: {e}"
+            logger.error(err_msg)
+            sys.stderr.write(f"{err_msg}\n")
             self.fallback_classifier = None
 
     @staticmethod
@@ -185,12 +203,34 @@ class DLAMCClassifier(BaseAMCClassifier):
         Classify raw complex IQ samples into modulation class probabilities
         using the 1D ResNet directly or the configured fallback strategy.
         """
+        from gr_playground.dsp.amc import RADIOML_24_CLASSES, RADIOML_TO_PARENT_MAP
+
         num_classes = len(MODULATION_CLASSES)
         y = np.asarray(samples, dtype=np.complex64)
         if len(y) < 16:
             res = {c: 0.0 for c in MODULATION_CLASSES}
             res["Noise"] = 1.0
             return res
+
+        def _format_probabilities(probs):
+            if len(probs) == len(RADIOML_24_CLASSES):
+                raw_dict = {c: 1e-7 for c in MODULATION_CLASSES}
+                for i, c_name in enumerate(RADIOML_24_CLASSES):
+                    raw_dict[c_name] = float(probs[i])
+                    parent = RADIOML_TO_PARENT_MAP.get(c_name)
+                    if parent and parent in raw_dict:
+                        raw_dict[parent] += float(probs[i])
+            else:
+                raw_dict = {
+                    MODULATION_CLASSES[i]: float(probs[i])
+                    for i in range(min(len(probs), num_classes))
+                }
+                for c in MODULATION_CLASSES:
+                    if c not in raw_dict:
+                        raw_dict[c] = 0.0
+
+            tot = sum(raw_dict.values())
+            return {k: v / tot for k, v in raw_dict.items()} if tot > 0 else raw_dict
 
         # 1. Fast Path: ONNX Runtime
         if self.onnx_session is not None:
@@ -199,12 +239,7 @@ class DLAMCClassifier(BaseAMCClassifier):
                 logits = self.onnx_session.run(None, {self.input_name: iq_tensor})[0][0]
                 exp_logits = np.exp(logits - np.max(logits))
                 probs = exp_logits / (np.sum(exp_logits) + 1e-12)
-                raw_dict = {
-                    MODULATION_CLASSES[i]: float(probs[i])
-                    for i in range(min(len(probs), num_classes))
-                }
-                tot = sum(raw_dict.values())
-                return {k: v / tot for k, v in raw_dict.items()} if tot > 0 else raw_dict
+                return _format_probabilities(probs)
             except Exception as e:
                 logger.warning(f"ONNX DL AMC inference error: {e}. Trying fallback.")
 
@@ -217,12 +252,7 @@ class DLAMCClassifier(BaseAMCClassifier):
                     logits = self.torch_model(t_input).cpu().numpy()[0]
                 exp_logits = np.exp(logits - np.max(logits))
                 probs = exp_logits / (np.sum(exp_logits) + 1e-12)
-                raw_dict = {
-                    MODULATION_CLASSES[i]: float(probs[i])
-                    for i in range(min(len(probs), num_classes))
-                }
-                tot = sum(raw_dict.values())
-                return {k: v / tot for k, v in raw_dict.items()} if tot > 0 else raw_dict
+                return _format_probabilities(probs)
             except Exception as e:
                 logger.warning(f"PyTorch DL AMC inference error: {e}. Trying fallback.")
 

@@ -41,6 +41,7 @@ from gr_playground.utils.sigmf_io import read_sigmf, write_sigmf
 from gr_playground.dsp.channelizer import scan_wideband_channels, extract_channel_flowgraph
 from gr_playground.dsp.spectrum import analyze_spectrum
 from gr_playground.dsp.modulation_id import classify_modulation
+from gr_playground.dsp.amc import get_onnx_runtime_info
 
 
 class HeadlessScannerStepCapture(gr.top_block):
@@ -498,6 +499,23 @@ def main():
 
     args = parser.parse_args()
 
+    # Check and print ONNX runtime availability at start of scanner
+    try:
+        has_ort, ort_version = get_onnx_runtime_info()
+    except Exception:
+        try:
+            import onnxruntime as ort
+            has_ort, ort_version = True, str(ort.__version__)
+        except ImportError:
+            has_ort, ort_version = False, None
+
+    if has_ort:
+        ort_status_str = f"Available (version {ort_version})"
+    else:
+        ort_status_str = "Not available"
+
+    print(f"ONNX Runtime    : {ort_status_str}")
+
     start_mhz = args.start_freq_mhz
     end_mhz = args.end_freq_mhz
     step_mhz = args.step_mhz
@@ -519,12 +537,13 @@ def main():
 
     header = (
         "====================================================================================================\n"
-        "📡 MULTI-PROCESS PARALLEL RTL-SDR RADIO SPECTRUM SCANNER REPORT\n"
+        "MULTI-PROCESS PARALLEL RTL-SDR RADIO SPECTRUM SCANNER REPORT\n"
         "====================================================================================================\n"
         f"Frequency Range : {start_mhz:.3f} MHz to {end_mhz:.3f} MHz\n"
         f"Step Size       : {step_mhz:.3f} MHz (Total Steps: {num_steps})\n"
         f"Step Duration   : {duration:.1f} s per step\n"
         f"Sample Rate     : {args.samp_rate / 1e6:.2f} MSps\n"
+        f"ONNX Runtime    : {ort_status_str}\n"
         f"Architecture    : Fault-Tolerant Multi-Process (1 Producer | {num_workers} Worker Processes | 1 Writer)\n"
         f"Start Time      : {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n"
         "====================================================================================================\n\n"
