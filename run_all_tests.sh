@@ -14,25 +14,26 @@ echo "========================================================================="
 
 export PYTHONPATH="/usr/lib/python3/dist-packages:${SCRIPT_DIR}:${PYTHONPATH}"
 
+if [ -x "/mnt/prog/miniforge3/envs/drl/bin/python" ]; then
+    PYTHON_BIN="/mnt/prog/miniforge3/envs/drl/bin/python"
+else
+    PYTHON_BIN="python3"
+fi
+
 # Check for required test dependencies in the active environment
-if ! command -v pytest >/dev/null 2>&1 && ! python3 -m pytest --version >/dev/null 2>&1; then
+if ! $PYTHON_BIN -m pytest --version >/dev/null 2>&1; then
     echo "ERROR: 'pytest' not found in PATH or active Python environment." >&2
     echo "Please activate an environment with required test dependencies (pytest, gnuradio, numpy, scipy, etc.)." >&2
     exit 1
 fi
 
-python3 -c "import gnuradio, numpy, scipy" 2>/dev/null || {
+$PYTHON_BIN -c "import gnuradio, numpy, scipy" 2>/dev/null || {
     echo "ERROR: Missing required dependencies (gnuradio, numpy, or scipy) in active Python environment." >&2
     echo "Please ensure you run this script in an environment where GNU Radio and scientific libraries are installed." >&2
     exit 1
 }
 
-# Execute pytest across tests/ directory or specified targets
-if command -v pytest >/dev/null 2>&1; then
-    PYTEST_CMD="pytest"
-else
-    PYTEST_CMD="python3 -m pytest"
-fi
+PYTEST_CMD="$PYTHON_BIN -m pytest"
 
 if [ "$#" -eq 0 ]; then
     $PYTEST_CMD tests/

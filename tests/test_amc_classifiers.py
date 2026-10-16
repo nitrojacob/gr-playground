@@ -312,12 +312,27 @@ def test_radioml_direct_classes_progressive_impairments(impairment_level):
         assert not any(np.isnan(v) for v in res.values())
         assert mod in res
 
-        # In clean/moderate tiers, check that top candidates contain direct class or family
-        if impairment_level in ("clean", "moderate"):
-            top3 = [k for k, _ in sorted(res.items(), key=lambda x: x[1], reverse=True)[:5]]
-            parent = RADIOML_TO_PARENT_MAP.get(mod, mod)
-            assert (mod in top3 or parent in top3 or any(parent in m for m in top3)), (
-                f"Expected {mod} or parent {parent} in top candidates under {impairment_level} tier, got {top3}"
+        # Progressive exact direct class match assertions without parent-family fallback:
+        top_candidates = [k for k, _ in sorted(res.items(), key=lambda x: x[1], reverse=True)]
+
+        if impairment_level == "clean":
+            # Clean tier: exact direct class must be in top 3, and primary schemes must match top 1
+            assert mod in top_candidates[:3], (
+                f"Expected exact direct class {mod} in top-3 under clean tier, got {top_candidates[:3]}"
+            )
+            if mod not in ("16PSK", "32QAM", "64QAM"):
+                assert top_candidates[0] == mod, (
+                    f"Expected exact direct class {mod} as top-1 under clean tier, got {top_candidates[0]} (candidates: {top_candidates[:3]})"
+                )
+        elif impairment_level == "moderate":
+            # Moderate tier: exact direct class must be in top 3
+            assert mod in top_candidates[:3], (
+                f"Expected exact direct class {mod} in top-3 under moderate tier, got {top_candidates[:3]}"
+            )
+        elif impairment_level == "impaired":
+            # Impaired tier: exact direct class must be in top 4
+            assert mod in top_candidates[:4], (
+                f"Expected exact direct class {mod} in top-4 under impaired tier, got {top_candidates[:4]}"
             )
 
 

@@ -14,7 +14,7 @@ from gr_playground.dsp.amc.common import (
 from gr_playground.dsp.amc import get_amc_classifier
 
 
-def apply_physical_dsp_sanity_checks(scores_dict, bandwidth_hz=None, features=None, cumulants=None):
+def apply_physical_dsp_sanity_checks(scores_dict, samples=None, bandwidth_hz=None, features=None, cumulants=None):
     """
     Applies physical DSP consistency rules between estimated occupied bandwidth and modulation schemes.
     IMPORTANT: Strictly relies on physical signal properties and never uses RF frequency band assumptions.
@@ -34,10 +34,9 @@ def apply_physical_dsp_sanity_checks(scores_dict, bandwidth_hz=None, features=No
         amp_var = features.get("amp_var", 0.5)
         zero_ratio = features.get("zero_ratio", 0.0)
         c20 = cumulants.get("C20", 0.0) if cumulants is not None else 0.0
-
-        # Physical symmetry and envelope rules
         c40 = cumulants.get("C40", 0.0) if cumulants is not None else 0.0
         c42 = cumulants.get("C42", 0.0) if cumulants is not None else 0.0
+        am_prob = sum(scores.get(m, 0.0) for m in ["AM", "AM-SSB-WC", "AM-SSB-SC", "AM-DSB-WC", "AM-DSB-SC"])
 
         # 1. Constant-envelope physical rule (FM, GFSK, BPSK)
         if amp_var < 0.05:
@@ -51,14 +50,30 @@ def apply_physical_dsp_sanity_checks(scores_dict, bandwidth_hz=None, features=No
                 if mod in scores:
                     scores[mod] *= 0.001
 
-            if c20 > 0.65:
+            if c20 > 0.65 and am_prob < 0.25:
                 scores["BPSK"] = scores.get("BPSK", 0.01) + 2.0
             elif c20 < 0.35:
-                scores["FM"] = scores.get("FM", 0.01) + 1.5
-                scores["GFSK"] = scores.get("GFSK", 0.01) + 1.5
+                # Distinguish analog FM vs digital GFSK/FSK using instantaneous frequency distribution
+                if samples is not None and len(samples) > 64:
+                    phase = np.unwrap(np.angle(samples))
+                    dphi = np.diff(phase)
+                    dphi_std = float(np.std(dphi))
+                    freq_kurt = float(np.mean((dphi - np.mean(dphi))**4) / (dphi_std**4 + 1e-12))
+                else:
+                    freq_kurt = 2.5
+
+                if freq_kurt < 2.3:
+                    # Bimodal digital FSK / GFSK frequency deviation distribution
+                    scores["GFSK"] = scores.get("GFSK", 0.01) + 2.5
+                    scores["CPFSK"] = scores.get("CPFSK", 0.01) + 1.5
+                    scores["FM"] = scores.get("FM", 0.01) * 0.1
+                else:
+                    # Continuous voice / analog FM frequency deviation distribution
+                    scores["FM"] = scores.get("FM", 0.01) + 2.5
+                    scores["GFSK"] = scores.get("GFSK", 0.01) * 0.1
 
         # 2. 2-Fold Symmetry (BPSK / ASK)
-        elif c20 > 0.70:
+        elif c20 > 0.70 and am_prob < 0.25:
             for mod in ["16QAM", "32QAM", "64QAM", "128QAM", "256QAM", "16APSK", "32APSK", "64APSK", "128APSK"]:
                 if mod in scores:
                     scores[mod] *= 0.001
@@ -87,11 +102,14 @@ def apply_physical_dsp_sanity_checks(scores_dict, bandwidth_hz=None, features=No
             scores["ASK"] = scores.get("ASK", 0.01) + 2.0
             scores["OOK"] = scores.get("OOK", 0.01) + 2.0
 
-        # Thermal noise squelch check
+        # Thermal noise squelch check:
+        # True thermal circular Gaussian noise has Rayleigh envelope (amp_var >= 0.22, zero_ratio >= 0.38),
+        # uniform phase distribution (phase_var ~ pi^2/3), and near-zero circular cumulants (c20 < 0.15, c40 < 0.25).
         amp_kurt = features.get("amp_kurtosis", 3.0)
         phase_var = features.get("phase_var", 0.0)
-        c40 = cumulants.get("C40", 0.0) if cumulants is not None else 0.0
-        if amp_kurt >= 3.0 and abs(phase_var - (np.pi**2) / 3.0) < 0.20 and c20 < 0.20 and c40 < 0.25:
+        if (amp_var >= 0.22 and zero_ratio >= 0.38 and
+            abs(phase_var - (np.pi**2) / 3.0) < 0.20 and
+            c20 < 0.15 and c40 < 0.25):
             scores["Noise"] = scores.get("Noise", 0.05) + 0.90
             for k in list(scores.keys()):
                 if k != "Noise":
@@ -121,6 +139,7 @@ def classify_modulation(samples, mode: str = "dl", bandwidth_hz: float = None):
 
     scores_dict = apply_physical_dsp_sanity_checks(
         scores_dict,
+        samples=samples,
         bandwidth_hz=bandwidth_hz,
         features=features,
         cumulants=cumulants

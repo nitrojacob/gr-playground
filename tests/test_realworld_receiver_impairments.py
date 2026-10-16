@@ -129,10 +129,12 @@ def test_realworld_rtlsdr_8bit_adc_quantization_and_clipping():
         # Verify dynamic range of normalized complex vector |I + jQ| <= sqrt(1^2 + 1^2) = 1.414
         assert np.max(np.abs(samples)) <= 1.50
 
+@pytest.mark.parametrize("mode", ["dl", "ml"])
 @pytest.mark.parametrize("mod_type", ["AM", "FM", "ASK", "BPSK", "QPSK", "8PSK", "16QAM", "64QAM", "GFSK"])
-def test_realworld_modulation_classification_under_low_snr_and_phase_noise(mod_type):
+def test_realworld_modulation_classification_under_low_snr_and_phase_noise(mode, mod_type):
     """
     Test modulation classification accuracy across all 9 modulation schemes when degraded by low SNR (10 dB), CFO (200 Hz), and phase noise offset (15 deg).
+    Enforces exact match of the target modulation (not family match) for both DL and ML AMC classifiers.
     """
     src_type = "audio" if mod_type in ["AM", "FM"] else "prbs"
     sim = ChannelSimulatorFlowgraph(
@@ -146,7 +148,7 @@ def test_realworld_modulation_classification_under_low_snr_and_phase_noise(mod_t
     )
     samples = sim.get_samples()
 
-    # Perform coarse CFO derotation before default ML AMC classification
+    # Perform coarse CFO derotation before classification
     analysis = analyze_spectrum(samples, sample_rate=32000)
     coarse_cfo = analysis["estimated_cfo_hz"]
     if abs(coarse_cfo) > 10.0:
@@ -155,23 +157,17 @@ def test_realworld_modulation_classification_under_low_snr_and_phase_noise(mod_t
     else:
         cfo_corrected = samples
 
-    preds, cumulants, stats = classify_modulation(cfo_corrected)
+    preds, cumulants, stats = classify_modulation(cfo_corrected, mode=mode)
 
     assert len(preds) > 0
     top_mod, conf = preds[0]
-    top_candidates = [p[0].upper() for p in preds[:2]]
 
-    family_map = {
-        "AM": {"AM", "ASK", "AM-SSB-WC", "AM-SSB-SC", "AM-DSB-WC", "AM-DSB-SC"},
-        "ASK": {"AM", "ASK", "OOK", "4ASK", "8ASK"},
-        "16QAM": {"16QAM", "32QAM", "64QAM", "128QAM", "256QAM", "QAM"},
-        "64QAM": {"16QAM", "32QAM", "64QAM", "128QAM", "256QAM", "QAM"},
-        "QPSK": {"QPSK", "OQPSK", "8PSK", "BPSK", "FM"},
-        "8PSK": {"8PSK", "16PSK", "32PSK", "QPSK", "OQPSK", "BPSK", "FM", "GFSK"},
-        "BPSK": {"BPSK", "QPSK", "8PSK"},
-        "FM": {"FM", "GFSK", "CPFSK", "8PSK"},
-        "GFSK": {"GFSK", "FM", "CPFSK", "8PSK"}
-    }
-    target_family = family_map.get(mod_type.upper(), {mod_type.upper()})
-    assert (top_mod.upper() in target_family) or any(cand in target_family for cand in top_candidates), \
-        f"Classification failed for {mod_type}: got {top_mod} ({conf*100:.1f}%)"
+    # Exact match assertion: target modulation must be the top prediction
+    if mod_type == "AM":
+        is_exact = (top_mod.upper() == "AM" or top_mod.upper().startswith("AM"))
+    else:
+        is_exact = (top_mod.upper() == mod_type.upper())
+
+    assert is_exact, (
+        f"Classification failed for {mod_type} in mode={mode}: expected exact match, got {top_mod} ({conf*100:.1f}%)"
+    )

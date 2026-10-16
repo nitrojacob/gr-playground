@@ -27,10 +27,10 @@ def test_low_snr_amc_topk_and_confidence_thresholds(snr_db, mod_type):
     - Ground-truth modulation must be present in Top-3 predicted candidates.
     - True class confidence must be >= 0.10.
     """
+    from gr_playground.dsp.amc import MLAMCClassifier
     from scripts.generate_amc_dataset import generate_raw_iq_frame
-
     clf = MLAMCClassifier()
-
+    np.random.seed(42)
     iq = generate_raw_iq_frame(
         mod_type, num_samples=8192, sps=4, snr_db=snr_db,
         cfo_rel=0.01, phase_noise_std=0.005
@@ -43,28 +43,27 @@ def test_low_snr_amc_topk_and_confidence_thresholds(snr_db, mod_type):
     assert pytest.approx(sum(res.values()), abs=1e-2) == 1.0
     assert not any(np.isnan(v) for v in res.values())
 
-    # Map modulations to category families
-    category_families = {
-        "BPSK": {"BPSK", "QPSK", "8PSK", "16QAM", "OQPSK", "16APSK"},
-        "QPSK": {"BPSK", "QPSK", "8PSK", "16QAM", "OQPSK", "16APSK"},
-        "8PSK": {"BPSK", "QPSK", "8PSK", "16QAM", "OQPSK", "16APSK", "FM", "GFSK"},
-        "GFSK": {"GFSK", "FM", "BPSK"},
-        "FM": {"FM", "AM", "GFSK"},
-        "AM": {"AM", "FM", "ASK"},
-        "ASK": {"ASK", "AM", "BPSK"},
-        "OFDM": {"OFDM", "SC-FDMA", "Noise"},
-        "SC-FDMA": {"SC-FDMA", "OFDM", "Noise"},
-        "Noise": {"Noise", "OFDM"}
-    }
+    # Exact Match Criteria:
+    # 1. Ground-truth modulation must be present in Top-3 predicted candidates (exact direct class).
+    # 2. Ground-truth class confidence must be >= 0.10 (well above random uniform baseline).
+    sorted_keys = [k for k, _ in sorted(res.items(), key=lambda x: x[1], reverse=True)]
+    top3 = sorted_keys[:3]
 
-    target_family = category_families.get(mod_type, {mod_type})
-    family_prob = sum(prob for m, prob in res.items() if m in target_family or RADIOML_TO_PARENT_MAP.get(m) in target_family)
-
-    # Pass Criteria: Family cumulative probability >= 0.35 (35%), well above random 1/16 baseline
-    assert family_prob >= 0.35, (
-        f"At low SNR={snr_db}dB, cumulative family probability for {mod_type} (family {target_family}) "
-        f"was below 35%: got {family_prob*100:.1f}%. Probs: {res}"
-    )
+    if mod_type == "AM":
+        am_prob = sum(res[m] for m in ["AM", "AM-SSB-SC", "AM-DSB-SC", "AM-SSB-WC", "AM-DSB-WC"])
+        assert any(m in top3 for m in ["AM", "AM-SSB-SC", "AM-DSB-SC", "AM-SSB-WC", "AM-DSB-WC"]), (
+            f"At low SNR={snr_db}dB, AM class not in top-3 candidates: {top3}"
+        )
+        assert am_prob >= 0.15, (
+            f"At low SNR={snr_db}dB, cumulative AM probability was {am_prob*100:.1f}% (< 15%). Probs: {res}"
+        )
+    else:
+        assert mod_type in top3, (
+            f"At low SNR={snr_db}dB, exact direct class {mod_type} was not in top-3 candidates: {top3}"
+        )
+        assert res[mod_type] >= 0.10, (
+            f"At low SNR={snr_db}dB, exact class confidence for {mod_type} was below 10%: got {res[mod_type]*100:.1f}%. Probs: {res}"
+        )
 
 @pytest.mark.parametrize("snr_db", [2.0, 3.0])
 def test_low_snr_ber_and_viterbi_fec_coding_gain(snr_db):
